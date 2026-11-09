@@ -300,6 +300,7 @@
   <div id="chatLista" class="tela"></div>
   <form id="chatCompor" class="hud" autocomplete="off">
     <textarea id="chatTexto" rows="1" placeholder="Mensagem para esta sessão" enterkeyhint="send"></textarea>
+    <button type="button" class="redondo" id="chatFalar" aria-label="Falar a mensagem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
     <button type="submit" class="redondo" id="chatEnviar" aria-label="Enviar" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
   </form>
 </section>
@@ -341,7 +342,7 @@
 
 <script>
 'use strict';
-const VERSAO = '2.3';
+const VERSAO = '2.4';
 const $ = s => document.querySelector(s);
 const guardar = (k, v) => { try { localStorage.setItem('atlas.' + k, JSON.stringify(v)); } catch (e) { } };
 const ler = (k, padrao) => { try { const v = localStorage.getItem('atlas.' + k); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; } };
@@ -1086,7 +1087,7 @@ function escutar(campo, aoTerminar) {
 }
 function pararEscuta() { if (rec) { try { rec.stop(); } catch (e) { } } }
 function marcarOuvindo(v) {
-  $('#falar').classList.toggle('ouvindo', v); $('#falarSessao').classList.toggle('ouvindo', v);
+  $('#falar').classList.toggle('ouvindo', v); $('#falarSessao').classList.toggle('ouvindo', v); $('#chatFalar').classList.toggle('ouvindo', v);
   if (v) { estadoOrbe('ouvindo'); $('#legenda').textContent = 'Ouvindo…'; $('#legenda').classList.add('viva'); }
   else { $('#legenda').classList.remove('viva'); if (estadoAtual === 'ouvindo') estadoOrbe('ocioso'); legendaPadrao(); }
 }
@@ -1105,6 +1106,8 @@ function falar(t) {
 function falarPedido() { escutar(null, t => { if (t) perguntar(t); else legendaPadrao(); }); }
 $('#falar').onclick = () => escutar($('#texto'), t => { if (t) { $('#texto').value = ''; atualizarEnviar(); perguntar(t); } });
 $('#falarSessao').onclick = () => escutar($('#textoSessao'), null);
+// microfone do chat da sessão: escreve no campo enquanto ouve e manda sozinho ao terminar
+$('#chatFalar').onclick = () => escutar($('#chatTexto'), t => { ajustarChatTexto(); if (t) enviarChat(); });
 // toque no núcleo fala; toque numa estrela com nome faz a pergunta pronta
 $('#heroi').addEventListener('click', ev => {
   const h = U3.hubEm(ev.clientX, ev.clientY);
