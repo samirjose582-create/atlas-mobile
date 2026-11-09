@@ -178,6 +178,7 @@
   .opcao > div:first-child{flex:1;min-width:0} .opcao > .botao{flex:none;white-space:nowrap;letter-spacing:.1em}
   .estado-dir.ok{color:var(--ok)} .estado-dir.erro{color:var(--amb)}
   #conexao.on[data-canal=direto] i{background:var(--pri)!important;box-shadow:0 0 10px var(--pri)!important}
+  #pushEstado.ok{color:var(--ok)} #pushEstado.erro{color:var(--amb)}
   .chave{width:48px;height:26px;position:relative;flex:none;border:1px solid var(--linha);background:var(--painel2);transition:background .2s}
   .chave::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--mut);transition:transform .2s,background .2s}
   .chave[aria-checked=true]{background:rgba(25,227,255,.22);border-color:var(--pri)}
@@ -279,6 +280,7 @@
 <section class="folha hud" id="folhaConfig" aria-labelledby="tConfig" role="dialog">
   <h3 id="tConfig">Ajustes</h3>
   <div class="opcao"><div>Falar as respostas<small>O celular lê em voz alta o que o Atlas responder</small></div><button class="chave" role="switch" id="optVoz" aria-checked="true" aria-label="Falar as respostas"></button></div>
+  <div class="opcao"><div>Notificações<small id="pushEstado">Avisa na tela de bloqueio quando algo ficar pronto, mesmo com o app fechado</small></div><button class="chave" role="switch" id="optPush" aria-checked="false" aria-label="Notificações"></button></div>
   <div class="opcao"><div>Vibrar<small>Ao receber respostas e pedidos de confirmação</small></div><button class="chave" role="switch" id="optVibrar" aria-checked="true" aria-label="Vibrar"></button></div>
   <div class="opcao"><div>Animação leve<small>Menos partículas, para poupar bateria</small></div><button class="chave" role="switch" id="optLeve" aria-checked="false" aria-label="Animação leve"></button></div>
   <div class="opcao" style="display:block">
@@ -349,7 +351,7 @@ async function decifrar(texto) {
 // ═════════════ estado ═════════════
 let PAR = ler('par', null);                  // {s: servidor, t: tópico, k: chave hex, n: nome}
 let MSGS = ler('msgs', []);
-let OPC = Object.assign({ voz: true, vibrar: true, leve: false }, ler('opc', {}));
+let OPC = Object.assign({ voz: true, vibrar: true, leve: false, push: false }, ler('opc', {}));
 let ultimoId = ler('ultimoId', null), ultimoIdD = ler('ultimoIdD', null);
 const espera = new Map();
 let STATUS = ler('status', null), SESSOES = ler('sessoes', null), tStatus = 0, online = null;
@@ -726,6 +728,8 @@ function trocarTela(nome) {
 document.querySelectorAll('.aba').forEach(a => a.onclick = () => trocarTela(a.dataset.tela));
 function marcar(el, v) { el.setAttribute('aria-checked', v ? 'true' : 'false'); }
 $('#btConfig').onclick = () => {
+  marcar($('#optPush'), OPC.push && podePush() && Notification.permission === 'granted');
+  if (!OPC.push) textoPush(!podePush() && !instalado() ? 'Para ligar no iPhone, abra o Atlas pelo ícone da Tela de Início.' : 'Avisa na tela de bloqueio quando algo ficar pronto, mesmo com o app fechado', '');
   marcar($('#optVoz'), OPC.voz); marcar($('#optVibrar'), OPC.vibrar); marcar($('#optLeve'), OPC.leve);
   $('#versao').textContent = 'Atlas Mobile ' + VERSAO + (VERSAO_PUB ? ' · publicação ' + VERSAO_PUB : '') + (PAR ? ' · canal ' + PAR.t.slice(0, 10) + '…' : '');
   abrirFolha('#folhaConfig'); mostrarDireto();
@@ -753,6 +757,75 @@ $('#btDireto').onclick = async () => {
 };
 $('#btLimpar').onclick = () => { MSGS = []; salvarMsgs(); fecharFolhas(); trocarTela('conversa'); aviso('Conversa apagada neste celular.'); };
 $('#btDesparear').onclick = () => { if ($('#btDesparear').dataset.ok !== '1') { $('#btDesparear').dataset.ok = '1'; $('#btDesparear').textContent = 'Tocar de novo'; return; } try { localStorage.clear(); } catch (e) { } location.replace(location.pathname); };
+
+// ═════════════ notificações na tela de bloqueio (Web Push) ═════════════
+// O notebook só manda quando o app não está aberto na tela: resposta que demorou, confirmação pedida, sessão que terminou.
+const podePush = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const instalado = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+function textoPush(t, cls) { const e = $('#pushEstado'); e.textContent = t; e.className = cls || ''; }
+async function ligarPush() {
+  if (!podePush()) {
+    textoPush(instalado() ? 'Este aparelho não aceita notificações de apps da web.' : 'No iPhone, as notificações só funcionam com o Atlas instalado: Safari → Compartilhar → Adicionar à Tela de Início, e abra por lá.', 'estado-dir erro');
+    return false;
+  }
+  const k = STATUS && STATUS.push_chave;
+  const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();   // pedido direto do toque
+  if (perm !== 'granted') { textoPush('Permissão negada. Libere em Ajustes do iPhone → Notificações → Atlas.', 'estado-dir erro'); return false; }
+  if (!k) { textoPush('Falta ativar no notebook: rode Ativar_Notificacoes.bat e reinicie o Atlas.', 'estado-dir erro'); return false; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && ler('pushChave', '') !== k) { await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: deB64u(k) });
+    textoPush('Ligando…', 'estado-dir');
+    const m = await pedirInterno('__push__', { inscricao: sub.toJSON(), aparelho: /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'celular', teste: true }, 20000);
+    if (!m.ok) { textoPush(m.erro || 'O notebook não aceitou a inscrição.', 'estado-dir erro'); return false; }
+    guardar('pushChave', k); guardar('tPush', Date.now());
+    textoPush('Ligadas. Mandei uma notificação de teste.', 'estado-dir ok'); return true;
+  } catch (e) { textoPush('Não consegui ligar: ' + (e.message || e), 'estado-dir erro'); return false; }
+}
+async function desligarPush() {
+  try {
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    if (sub) { pedirInterno('__push_sair__', { endpoint: sub.endpoint }, 10000).catch(() => { }); await sub.unsubscribe(); }
+  } catch (e) { }
+  textoPush('Desligadas.', 'estado-dir');
+}
+async function garantirPush() {                       // reabre o app: confere se a inscrição continua valendo (1x por dia)
+  if (!OPC.push || !podePush() || Notification.permission !== 'granted' || !STATUS || !STATUS.push_chave) return;
+  try {
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    if (!sub || ler('pushChave', '') !== STATUS.push_chave) { await ligarPushSilencioso(); return; }
+    if (Date.now() - ler('tPush', 0) > 86400000 || !STATUS.push_inscritos) {
+      await pedirInterno('__push__', { inscricao: sub.toJSON(), aparelho: 'iPhone' }, 15000); guardar('tPush', Date.now());
+    }
+  } catch (e) { }
+}
+async function ligarPushSilencioso() {
+  try {
+    const reg = await navigator.serviceWorker.ready; let sub = await reg.pushManager.getSubscription();
+    if (sub && ler('pushChave', '') !== STATUS.push_chave) { await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: deB64u(STATUS.push_chave) });
+    const m = await pedirInterno('__push__', { inscricao: sub.toJSON(), aparelho: 'iPhone' }, 15000);
+    if (m.ok) { guardar('pushChave', STATUS.push_chave); guardar('tPush', Date.now()); }
+  } catch (e) { }
+}
+$('#optPush').onclick = async () => {
+  const el = $('#optPush');
+  if (OPC.push) { OPC.push = false; marcar(el, false); guardar('opc', OPC); desligarPush(); return; }
+  marcar(el, true);
+  const ok = await ligarPush();
+  OPC.push = ok; marcar(el, ok); guardar('opc', OPC);
+};
+// o app saiu da tela: avisa o notebook (a partir daqui, notificações valem) e fecha o fluxo
+let beaconOculto = null;
+async function prepararBeacon() { try { if (CH) beaconOculto = await cifrar({ id: novoId(), t: Date.now() / 1000, tipo: 'oculto' }); } catch (e) { } }
+function saiuDaTela() {
+  if (canal === 'direto' && beaconOculto && navigator.sendBeacon) { try { navigator.sendBeacon(baseDireta() + '/vis', beaconOculto); } catch (e) { } }
+  if (abortar) { abortar.abort(); abortar = null; }
+  clearTimeout(reconectar);
+}
+addEventListener('pagehide', saiuDaTela);
 
 // ═════════════ atualizador ═════════════
 // Quando você sobe arquivos novos no GitHub, o app percebe sozinho (ao abrir, ao voltar para ele e a cada 10 min)
@@ -1206,12 +1279,13 @@ async function iniciar() {
   $('#parear').classList.add('oculto'); $('#app').classList.remove('oculto');
   for (const m of MSGS) if (m.de === 'atlas' && m.estado === 'enviando') m.estado = 'pendente';
   estadoOrbe('ocioso'); desenharConversa(); desenharTelemetria(); compactar();
-  await escolherCanal(); atualizarStatus(); atualizarSessoes(false);
+  await escolherCanal(); prepararBeacon(); atualizarStatus().then(garantirPush); atualizarSessoes(false);
   // o canal gratuito (ntfy.sh) limita as mensagens por IP: atualizações automáticas só de vez em quando
   setInterval(() => { if (!document.hidden && Date.now() - tTentStatus > (telaAtual === 'painel' ? 55000 : 170000)) atualizarStatus(); }, 15000);
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) return;
+  if (document.hidden) { saiuDaTela(); return; }
+  prepararBeacon();
   if (CH) { escolherCanal().then(() => { if (Date.now() - tTentStatus > 30000) atualizarStatus(); }); }
   procurarAtualizacao(false);
 });

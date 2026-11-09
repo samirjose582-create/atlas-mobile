@@ -39,3 +39,20 @@ self.addEventListener('fetch', e => {
     }
   })());
 });
+
+// Notificações do Atlas (tela de bloqueio): o notebook só manda quando o app não está aberto na tela.
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (x) { d = { corpo: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.titulo || 'Atlas', {
+    body: d.corpo || 'Toque para ver.', tag: d.tag || undefined, renotify: !!d.tag,
+    icon: new URL('icone-192.png', base()).href, badge: new URL('icone-192.png', base()).href, data: { url: base() }
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    for (const c of cs) if (c.url.startsWith(base()) && 'focus' in c) return c.focus();
+    return self.clients.openWindow(base());
+  }));
+});

@@ -27,6 +27,11 @@ O ntfy.sh gratuito tem cota diária de mensagens por IP. Com o Tailscale, o app 
 4. No Atlas: Ajustes → Ligação direta → cole o endereço → Salvar. O topo mostra `NOTEBOOK ONLINE · DIRETO`.
 Sem o Tailscale ligado, o app usa o ntfy como reserva, sozinho.
 
+## Notificações na tela de bloqueio
+1. No notebook, rode `Ativar_Notificacoes.bat` (uma vez) e reinicie o Atlas.
+2. No iPhone, abra o Atlas pelo ícone da Tela de Início → Ajustes → Notificações → Permitir.
+Avisa só com o app fechado: resposta que demorou, confirmação pedida, sessão do Claude que terminou ou pediu permissão.
+
 ## Atualizar (quando você editar algo)
 1. No GitHub: Add file → Upload files → arraste os arquivos alterados (normalmente só `index.html`, às vezes `sw.js`) → Commit.
 2. Em 1–2 minutos o app percebe sozinho: ao abrir, ao voltar para ele e a cada 10 min.
