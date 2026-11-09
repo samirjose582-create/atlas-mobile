@@ -46,8 +46,12 @@ Claude Desktop for pedir permissão, o próprio Claude Code chama o Atlas (hook 
 para o Claude Code — nenhum clique, mouse ou teclado no notebook. Sem resposta em 5 min (`longe_espera_s`), o pedido cai na
 tela do notebook (nada é aprovado sozinho). Desligado (padrão), os pedidos aparecem normalmente no notebook.
 Por voz: "aprova a sessão SG-Tools", "nega o pedido no Claude". Registro: `logs/permissoes.log`.
-As mensagens do chat vão por mensagem entre sessões para o título EXATO da sessão (sem mouse). Se a sessão não aparecer
-para o Atlas, ele avisa e não envia; com `"entrega_reserva_caixa": true` no `config.json`, digita na caixa dela (mouse).
+As mensagens do chat vão sem mouse/teclado. O Atlas lê o registro de cada processo em `%USERPROFILE%\.claude\sessions\`:
+- sessão com processo ativo → mensagem entre sessões para o nome EXATO do registro dela (confere no histórico que chegou);
+- sessão parada (o Claude Desktop encerra o processo das sessões ociosas) → retoma a MESMA conversa em segundo plano
+  (`claude --resume`); com o modo longe ligado, os pedidos de permissão dessa execução vão para o celular (sem ele, comandos
+  ficam bloqueados). Nunca roda em segundo plano se a sessão voltar a ficar ativa no notebook.
+Reserva opcional (desligada): `"entrega_reserva_caixa": true` no `config.json` digita na caixa da sessão (usa o mouse).
 
 ## Responder permissões das sessões do Claude Desktop (pela tela — reserva, desligada)
 Quando uma sessão pede permissão, a aba **Sessões** mostra o card em vermelho com **QUER ›** (o que ela quer fazer, lido do
