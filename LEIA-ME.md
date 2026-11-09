@@ -18,5 +18,9 @@ a chave fica só no notebook e no celular, depois do pareamento.
    (Ou copie o código que aparece na tela e cole no app.)
 3. Instale: Chrome (Android) → menu ⋮ → Instalar app. Safari (iPhone) → Compartilhar → Adicionar à Tela de Início.
 
-## Atualizar
-Envie de novo os arquivos ao repositório; o app pega a versão nova ao abrir com internet.
+## Atualizar (quando você editar algo)
+1. No GitHub: Add file → Upload files → arraste os arquivos alterados (normalmente só `index.html`, às vezes `sw.js`) → Commit.
+2. Em 1–2 minutos o app percebe sozinho: ao abrir, ao voltar para ele e a cada 10 min.
+   O botão ⟳ no topo fica âmbar e aparece a faixa **NOVA VERSÃO DO APP** → toque em **Atualizar**.
+3. Para forçar a qualquer momento: toque no ⟳ (diz se já está na mais nova) ou Ajustes → **Atualizar o app**.
+A conversa e o pareamento continuam; não precisa parear de novo.
