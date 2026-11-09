@@ -18,6 +18,15 @@ a chave fica só no notebook e no celular, depois do pareamento.
    (Ou copie o código que aparece na tela e cole no app.)
 3. Instale: Chrome (Android) → menu ⋮ → Instalar app. Safari (iPhone) → Compartilhar → Adicionar à Tela de Início.
 
+## Ligação direta (Tailscale) — recomendado
+O ntfy.sh gratuito tem cota diária de mensagens por IP. Com o Tailscale, o app fala direto com o notebook, sem limite:
+1. Notebook: instale o Tailscale (tailscale.com/download) e entre com sua conta.
+2. Rode `Ativar_Tailscale.bat` na pasta do Atlas. Ele publica só o canal do app (`/api/movel`) na sua rede Tailscale, com HTTPS,
+   e mostra o endereço do notebook (ex.: `notebook.tailXXXX.ts.net`). Reinicie o Atlas.
+3. iPhone: instale o app Tailscale, entre com a MESMA conta e deixe ligado.
+4. No Atlas: Ajustes → Ligação direta → cole o endereço → Salvar. O topo mostra `NOTEBOOK ONLINE · DIRETO`.
+Sem o Tailscale ligado, o app usa o ntfy como reserva, sozinho.
+
 ## Atualizar (quando você editar algo)
 1. No GitHub: Add file → Upload files → arraste os arquivos alterados (normalmente só `index.html`, às vezes `sw.js`) → Commit.
 2. Em 1–2 minutos o app percebe sozinho: ao abrir, ao voltar para ele e a cada 10 min.

@@ -175,6 +175,9 @@
   .folha .fila{display:flex;gap:8px;justify-content:flex-end;align-items:center}
   .opcao{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--linha);font-size:15.5px;color:var(--branco)}
   .opcao small{display:block;color:var(--mut);font-size:13px}
+  .opcao > div:first-child{flex:1;min-width:0} .opcao > .botao{flex:none;white-space:nowrap;letter-spacing:.1em}
+  .estado-dir.ok{color:var(--ok)} .estado-dir.erro{color:var(--amb)}
+  #conexao.on[data-canal=direto] i{background:var(--pri)!important;box-shadow:0 0 10px var(--pri)!important}
   .chave{width:48px;height:26px;position:relative;flex:none;border:1px solid var(--linha);background:var(--painel2);transition:background .2s}
   .chave::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--mut);transition:transform .2s,background .2s}
   .chave[aria-checked=true]{background:rgba(25,227,255,.22);border-color:var(--pri)}
@@ -278,6 +281,13 @@
   <div class="opcao"><div>Falar as respostas<small>O celular lê em voz alta o que o Atlas responder</small></div><button class="chave" role="switch" id="optVoz" aria-checked="true" aria-label="Falar as respostas"></button></div>
   <div class="opcao"><div>Vibrar<small>Ao receber respostas e pedidos de confirmação</small></div><button class="chave" role="switch" id="optVibrar" aria-checked="true" aria-label="Vibrar"></button></div>
   <div class="opcao"><div>Animação leve<small>Menos partículas, para poupar bateria</small></div><button class="chave" role="switch" id="optLeve" aria-checked="false" aria-label="Animação leve"></button></div>
+  <div class="opcao" style="display:block">
+    <div>Ligação direta (Tailscale)<small id="diretoEstado" class="estado-dir"></small></div>
+    <div style="display:flex;gap:8px;margin-top:9px">
+      <input id="campoDireto" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="notebook.tailXXXX.ts.net" style="flex:1;min-width:0;padding:9px 10px;border:1px solid var(--linha);background:rgba(1,6,11,.9);color:var(--branco);font:inherit;font-size:16px">
+      <button class="botao leve" id="btDireto">Salvar</button>
+    </div>
+  </div>
   <div class="opcao"><div>Atualizar o app<small>Busca de novo os arquivos publicados no GitHub. A conversa e o pareamento ficam.</small></div><button class="botao leve" id="btForcarAtualizar">Atualizar</button></div>
   <div class="opcao"><div>Apagar a conversa<small>Só neste celular; o Atlas não esquece nada</small></div><button class="botao" id="btLimpar">Apagar</button></div>
   <div class="opcao"><div>Desligar este celular<small>Remove a chave; para voltar, pareie de novo</small></div><button class="botao" id="btDesparear" style="color:var(--err)">Desligar</button></div>
@@ -340,7 +350,7 @@ async function decifrar(texto) {
 let PAR = ler('par', null);                  // {s: servidor, t: tópico, k: chave hex, n: nome}
 let MSGS = ler('msgs', []);
 let OPC = Object.assign({ voz: true, vibrar: true, leve: false }, ler('opc', {}));
-let ultimoId = ler('ultimoId', null);
+let ultimoId = ler('ultimoId', null), ultimoIdD = ler('ultimoIdD', null);
 const espera = new Map();
 let STATUS = ler('status', null), SESSOES = ler('sessoes', null), tStatus = 0, online = null;
 let sesFase = 'nunca', sesErro = '', tSessoes = ler('tSessoes', 0);   // nunca | carregando | ok | erro
@@ -359,11 +369,41 @@ function haQuanto(t) {
 const hora = t => new Date(t * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 function escapar(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-// ═════════════ canal (ntfy) ═════════════
-let leitor = null, abortar = null, reconectar = null, falhas = 0;
+// ═════════════ canal: direto (Tailscale) ou ntfy (reserva) ═════════════
+// Com o Tailscale ligado no celular, o app fala direto com o Atlas do notebook: sem limite de mensagens.
+// Sem ele (ou fora da rede), cai no ntfy.sh, que tem cota diária.
+let leitor = null, abortar = null, reconectar = null, falhas = 0, canal = 'ntfy';
 const pedacos = new Map();
+const baseDireta = () => (PAR && PAR.d ? PAR.d.replace(/\/+$/, '') + '/api/movel' : null);
+async function testarDireto() {
+  const b = baseDireta(); if (!b) return false;
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 3500);
+  try { const r = await fetch(b + '/ping', { signal: ac.signal, cache: 'no-store' }); return r.ok; }
+  catch (e) { return false; } finally { clearTimeout(tm); }
+}
+let escolhendo = null;
+function escolherCanal() {
+  if (escolhendo) return escolhendo;
+  escolhendo = (async () => {
+    const novo = (await testarDireto()) ? 'direto' : 'ntfy', mudou = novo !== canal;
+    canal = novo; marcarCanal();
+    if (mudou || !abortar) ouvir();
+    escolhendo = null; return canal;
+  })();
+  return escolhendo;
+}
+function marcarCanal() { const c = $('#conexao'); c.dataset.canal = canal; if (online) $('#conexaoTxt').textContent = 'Notebook online · ' + (canal === 'direto' ? 'direto' : 'ntfy'); }
 async function publicar(obj) {
   const corpo = await cifrar(obj);
+  if (canal === 'direto') {
+    try {
+      const r = await fetch(baseDireta() + '/c', { method: 'POST', body: corpo });
+      if (r.ok) return;
+      if (r.status === 401 || r.status === 409) throw new Error('recusado ' + r.status);
+    } catch (e) { if (/recusado/.test(e.message)) throw e; }
+    canal = 'ntfy'; marcarCanal(); ouvir();                    // direto falhou: manda pelo ntfy e volta a testar depois
+    setTimeout(escolherCanal, 30000);
+  }
   for (let tentativa = 0; ; tentativa++) {             // o ntfy.sh limita requisições por IP: se pedir calma, espera e tenta de novo
     const r = await fetch(PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-c', { method: 'POST', body: corpo });
     if (r.ok) return;
@@ -378,9 +418,10 @@ async function enviarAoAtlas(id, texto, extra = {}) {
 }
 function ouvir() {
   if (abortar) abortar.abort();
-  abortar = new AbortController();
-  const desde = ultimoId || '10m';
-  const url = PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-r/json?since=' + encodeURIComponent(desde);
+  abortar = new AbortController(); clearTimeout(reconectar);
+  const direto = canal === 'direto' && baseDireta();
+  const url = direto ? baseDireta() + '/r/json?since=' + encodeURIComponent(ultimoIdD || 'd0')
+    : PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-r/json?since=' + encodeURIComponent(ultimoId || '10m');
   const inicio = Date.now();
   fetch(url, { signal: abortar.signal, cache: 'no-store' }).then(async r => {
     if (!r.ok || !r.body) throw new Error('canal ' + r.status);
@@ -394,13 +435,14 @@ function ouvir() {
   }).catch(e => {
     if (e.name === 'AbortError') return;
     falhas = Date.now() - inicio > 60000 ? 0 : falhas + 1;        // caiu logo: espera mais (não gasta a cota do ntfy)
-    clearTimeout(reconectar); reconectar = setTimeout(ouvir, Math.min(60000, 3000 * 2 ** Math.min(falhas, 4)));
+    clearTimeout(reconectar);
+    reconectar = setTimeout(() => direto ? (canal = 'ntfy', escolherCanal()) : ouvir(), direto ? 1500 : Math.min(60000, 3000 * 2 ** Math.min(falhas, 4)));
   });
 }
 async function chegou(linha) {
   let ev; try { ev = JSON.parse(linha); } catch (e) { return; }
   if (ev.event !== 'message') return;
-  ultimoId = ev.id; guardar('ultimoId', ultimoId);
+  if (/^d\d+$/.test(ev.id || '')) { ultimoIdD = ev.id; guardar('ultimoIdD', ultimoIdD); } else { ultimoId = ev.id; guardar('ultimoId', ultimoId); }
   let m = await decifrar(ev.message || ''); if (!m || !m.id) return;
   if (m.pedaco != null) {                                        // resposta grande (ex.: lista de sessões) chega em pedaços
     const b = pedacos.get(m.id) || { n: m.total, partes: [], t: Date.now() };
@@ -519,6 +561,7 @@ async function atualizarStatus() {
   try {
     const m = await pedirInterno('__status__', null, 9000);
     STATUS = m.status; tStatus = Date.now(); guardar('status', STATUS); marcarOnline(true);
+    if (STATUS && STATUS.direto && STATUS.direto !== PAR.d) { PAR.d = STATUS.direto; guardar('par', PAR); escolherCanal(); }
   } catch (e) { marcarOnline(false); }
   statusEmCurso = false;
   desenharTelemetria(); if (telaAtual === 'painel') desenharPainel();
@@ -526,7 +569,7 @@ async function atualizarStatus() {
 function marcarOnline(v) {
   online = v; const c = $('#conexao');
   c.className = v ? 'on' : 'off';
-  $('#conexaoTxt').textContent = v ? 'Notebook online' : 'Notebook sem resposta';
+  $('#conexaoTxt').textContent = v ? 'Notebook online · ' + (canal === 'direto' ? 'direto' : 'ntfy') : 'Notebook sem resposta';
   if (!v && estadoAtual === 'ocioso') estadoOrbe('offline'); else if (v && estadoAtual === 'offline') estadoOrbe('ocioso');
 }
 const faseBuild = b => !b || !b.fase ? null : b.fase === 'ok' ? 'ok' : b.fase === 'erro' ? 'erro' : 'vivo';
@@ -675,11 +718,29 @@ function marcar(el, v) { el.setAttribute('aria-checked', v ? 'true' : 'false'); 
 $('#btConfig').onclick = () => {
   marcar($('#optVoz'), OPC.voz); marcar($('#optVibrar'), OPC.vibrar); marcar($('#optLeve'), OPC.leve);
   $('#versao').textContent = 'Atlas Mobile ' + VERSAO + (VERSAO_PUB ? ' · publicação ' + VERSAO_PUB : '') + (PAR ? ' · canal ' + PAR.t.slice(0, 10) + '…' : '');
-  abrirFolha('#folhaConfig');
+  abrirFolha('#folhaConfig'); mostrarDireto();
 };
 $('#optVoz').onclick = () => { OPC.voz = !OPC.voz; marcar($('#optVoz'), OPC.voz); guardar('opc', OPC); if (!OPC.voz) speechSynthesis.cancel(); };
 $('#optVibrar').onclick = () => { OPC.vibrar = !OPC.vibrar; marcar($('#optVibrar'), OPC.vibrar); guardar('opc', OPC); };
 $('#optLeve').onclick = () => { OPC.leve = !OPC.leve; marcar($('#optLeve'), OPC.leve); guardar('opc', OPC); U3.leve(OPC.leve); };
+function normalizarDireto(t) {
+  t = (t || '').trim(); if (!t) return '';
+  if (!/^https?:\/\//i.test(t)) t = 'https://' + t;
+  try { const u = new URL(t); return 'https://' + u.host; } catch (e) { return null; }
+}
+async function mostrarDireto() {
+  const st = $('#diretoEstado'); $('#campoDireto').value = PAR && PAR.d ? PAR.d.replace(/^https:\/\//, '') : '';
+  if (!PAR || !PAR.d) { st.textContent = 'Desligada. Com o Tailscale, o app fala direto com o notebook, sem limite de mensagens.'; st.className = 'estado-dir'; return; }
+  st.textContent = 'Testando…'; st.className = 'estado-dir';
+  const ok = await testarDireto();
+  st.textContent = ok ? 'Conectada: falando direto com o notebook.' : 'Sem resposta. Ligue o Tailscale no celular (e o Atlas no notebook). Usando o ntfy por enquanto.';
+  st.className = 'estado-dir ' + (ok ? 'ok' : 'erro');
+}
+$('#btDireto').onclick = async () => {
+  const v = normalizarDireto($('#campoDireto').value);
+  if (v === null) { $('#diretoEstado').textContent = 'Endereço inválido. Ex.: notebook-samir.tail1234.ts.net'; $('#diretoEstado').className = 'estado-dir erro'; return; }
+  PAR.d = v; guardar('par', PAR); await mostrarDireto(); escolherCanal();
+};
 $('#btLimpar').onclick = () => { MSGS = []; salvarMsgs(); fecharFolhas(); trocarTela('conversa'); aviso('Conversa apagada neste celular.'); };
 $('#btDesparear').onclick = () => { if ($('#btDesparear').dataset.ok !== '1') { $('#btDesparear').dataset.ok = '1'; $('#btDesparear').textContent = 'Tocar de novo'; return; } try { localStorage.clear(); } catch (e) { } location.replace(location.pathname); };
 
@@ -1117,7 +1178,7 @@ function lerCodigo(txt) {
   txt = (txt || '').trim(); const m = txt.match(/#par=([A-Za-z0-9_\-=]+)/); if (m) txt = m[1];
   const o = JSON.parse(dec.decode(deB64u(txt)));
   if (!o.t || !/^[0-9a-f]{64}$/i.test(o.k || '')) throw new Error('código incompleto');
-  return { s: o.s || 'https://ntfy.sh', t: o.t, k: o.k.toLowerCase(), n: o.n || 'Atlas' };
+  return { s: o.s || 'https://ntfy.sh', t: o.t, k: o.k.toLowerCase(), n: o.n || 'Atlas', d: o.d || (PAR && PAR.d) || '' };
 }
 async function parear(txt) {
   const e = $('#erroParear');
@@ -1134,13 +1195,14 @@ async function iniciar() {
   await prepararChaves(PAR.k);
   $('#parear').classList.add('oculto'); $('#app').classList.remove('oculto');
   for (const m of MSGS) if (m.de === 'atlas' && m.estado === 'enviando') m.estado = 'pendente';
-  estadoOrbe('ocioso'); desenharConversa(); desenharTelemetria(); compactar(); ouvir(); atualizarStatus(); atualizarSessoes(false);
+  estadoOrbe('ocioso'); desenharConversa(); desenharTelemetria(); compactar();
+  await escolherCanal(); atualizarStatus(); atualizarSessoes(false);
   // o canal gratuito (ntfy.sh) limita as mensagens por IP: atualizações automáticas só de vez em quando
   setInterval(() => { if (!document.hidden && Date.now() - tTentStatus > (telaAtual === 'painel' ? 55000 : 170000)) atualizarStatus(); }, 15000);
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
-  if (CH) { ouvir(); if (Date.now() - tTentStatus > 30000) atualizarStatus(); }
+  if (CH) { escolherCanal().then(() => { if (Date.now() - tTentStatus > 30000) atualizarStatus(); }); }
   procurarAtualizacao(false);
 });
 setInterval(() => { if (!document.hidden) procurarAtualizacao(false); }, 10 * 60 * 1000);
@@ -1151,7 +1213,7 @@ function codigoDoLink() {
 }
 addEventListener('hashchange', async () => {
   if (!codigoDoLink()) return;
-  if (iniciado) { await prepararChaves(PAR.k); ouvir(); atualizarStatus(); aviso('Celular ligado ao Atlas.'); } else await iniciar();
+  if (iniciado) { await prepararChaves(PAR.k); escolherCanal(); atualizarStatus(); aviso('Celular ligado ao Atlas.'); } else await iniciar();
 });
 (async function () {
   codigoDoLink();
