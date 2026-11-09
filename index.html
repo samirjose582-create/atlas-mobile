@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#050B12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Atlas">
+<title>Atlas</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --abismo:#050B12; --casco:#0B1724; --casco2:#102133; --linha:rgba(127,227,240,.14);
+    --ciano:#19E3FF; --gelo:#D8F7FF; --nevoa:rgba(216,247,255,.6); --apagado:rgba(216,247,255,.38);
+    --ambar:#FFB547; --coral:#FF5C77; --menta:#3DFFB5;
+    --f:'Barlow','Bahnschrift','Segoe UI',system-ui,sans-serif; --n:'Barlow Semi Condensed','Barlow','Bahnschrift',sans-serif;
+    --sa-t:env(safe-area-inset-top,0px); --sa-b:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:var(--abismo);color:var(--gelo);font-family:var(--f);font-size:16px;line-height:1.45}
+  body{overflow:hidden;overscroll-behavior:none}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--ciano);outline-offset:2px}
+  .oculto{display:none!important}
+
+  /* ── estrutura ── */
+  #app{position:fixed;inset:0;display:grid;grid-template-rows:auto auto auto 1fr auto auto;padding-top:var(--sa-t)}
+  #topo{display:flex;align-items:center;gap:10px;padding:12px 18px 4px}
+  #conexao{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--nevoa);flex:1;min-width:0}
+  #conexao i{width:8px;height:8px;border-radius:50%;background:var(--apagado);flex:none;transition:background .4s,box-shadow .4s}
+  #conexao.on i{background:var(--menta);box-shadow:0 0 10px var(--menta)}
+  #conexao.off i{background:var(--coral);box-shadow:0 0 10px var(--coral)}
+  #conexao span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .icone{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;color:var(--nevoa)}
+  .icone:active{background:var(--casco)}
+  .icone svg{width:22px;height:22px}
+
+  /* núcleo */
+  #nucleo{position:relative;display:grid;justify-items:center;padding:6px 0 4px;transition:padding .5s cubic-bezier(.2,.8,.2,1)}
+  #orbe{width:216px;height:216px;border-radius:50%;transition:width .55s cubic-bezier(.2,.8,.2,1),height .55s cubic-bezier(.2,.8,.2,1);touch-action:manipulation}
+  #legenda{margin-top:4px;min-height:24px;font-size:15px;color:var(--nevoa);text-align:center;padding:0 28px;max-width:420px;transition:opacity .3s}
+  #legenda.viva{color:var(--gelo)}
+  #app.compacto #nucleo{grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:2px 18px 6px;justify-items:start}
+  #app.compacto #orbe{width:64px;height:64px}
+  #app.compacto #legenda{margin:0;padding:0;text-align:left;font-size:14px}
+
+  /* faixa de estado */
+  #faixa{display:flex;gap:8px;overflow-x:auto;padding:6px 18px 10px;scrollbar-width:none}
+  #faixa::-webkit-scrollbar{display:none}
+  .chip{flex:none;display:flex;align-items:baseline;gap:6px;padding:7px 12px;border-radius:999px;background:var(--casco);border:1px solid var(--linha);font-size:13px;color:var(--nevoa);white-space:nowrap}
+  .chip b{font-family:var(--n);font-weight:600;font-size:15px;color:var(--gelo);letter-spacing:.01em}
+  .chip.ok b{color:var(--menta)} .chip.alerta b{color:var(--coral)} .chip.vivo b{color:var(--ambar)}
+
+  /* telas */
+  .tela{overflow-y:auto;overscroll-behavior:contain;padding:4px 18px 18px;-webkit-overflow-scrolling:touch}
+  #v-conversa{display:flex;flex-direction:column;gap:10px}
+  .vazio{margin:auto 0;padding:28px 6px;color:var(--nevoa);font-size:15px}
+  .vazio h2{font-weight:500;font-size:22px;color:var(--gelo);margin-bottom:6px}
+  .sugestoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .sugestao{padding:9px 14px;border-radius:14px;border:1px solid var(--linha);background:var(--casco);font-size:14px;color:var(--gelo);text-align:left}
+  .sugestao:active{border-color:var(--ciano)}
+
+  .msg{max-width:86%;padding:10px 14px;border-radius:18px;font-size:15.5px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+  .msg.eu{align-self:flex-end;background:#13314A;border-bottom-right-radius:6px}
+  .msg.atlas{align-self:flex-start;background:var(--casco);border:1px solid var(--linha);border-bottom-left-radius:6px}
+  .msg .quando{display:block;margin-top:4px;font-size:12px;color:var(--apagado)}
+  .msg .para{display:block;font-size:12.5px;color:var(--ciano);margin-bottom:2px}
+  .msg.pendente{border-color:rgba(255,181,71,.45)}
+  .msg.pendente .trab{display:flex;align-items:center;gap:8px;color:var(--ambar);font-size:14px}
+  .msg.pendente .trab i{width:14px;height:14px;border-radius:50%;border:2px solid var(--ambar);border-right-color:transparent;animation:gira 1s linear infinite}
+  .msg.erro{border-color:rgba(255,92,119,.5)}
+  .msg.pergunta{border-color:rgba(255,92,119,.55);background:linear-gradient(180deg,rgba(255,92,119,.09),transparent 70%),var(--casco)}
+  .acoes{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .acao{padding:9px 16px;border-radius:12px;font-weight:600;font-size:15px;background:var(--casco2);border:1px solid var(--linha)}
+  .acao.sim{background:var(--ciano);color:#04202A;border-color:transparent}
+  .acao.nao{color:var(--coral);border-color:rgba(255,92,119,.45)}
+  .acao:disabled{opacity:.45}
+  .detalhe{display:block;margin-top:6px;font-size:13px;color:var(--nevoa)}
+  @keyframes gira{to{transform:rotate(360deg)}}
+
+  /* compositor */
+  #compor{display:flex;align-items:flex-end;gap:8px;padding:8px 12px 8px 18px;border-top:1px solid var(--linha);background:rgba(5,11,18,.92)}
+  #texto{flex:1;resize:none;max-height:120px;min-height:44px;padding:11px 14px;border-radius:22px;border:1px solid var(--linha);background:var(--casco);color:var(--gelo);font:inherit;font-size:16px;line-height:1.35}
+  #texto::placeholder{color:var(--apagado)}
+  .redondo{width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--casco2);color:var(--gelo)}
+  .redondo svg{width:22px;height:22px}
+  #enviar{background:var(--ciano);color:#04202A}
+  #enviar:disabled{background:var(--casco2);color:var(--apagado)}
+  #falar.ouvindo{background:var(--coral);color:#fff;box-shadow:0 0 0 6px rgba(255,92,119,.18)}
+
+  /* abas */
+  #abas{display:grid;grid-template-columns:repeat(3,1fr);padding:6px 10px calc(6px + var(--sa-b));border-top:1px solid var(--linha);background:var(--abismo)}
+  .aba{display:grid;justify-items:center;gap:2px;padding:6px 0;font-size:12.5px;color:var(--apagado)}
+  .aba svg{width:22px;height:22px}
+  .aba[aria-selected=true]{color:var(--ciano)}
+  .aba .bolha{position:absolute;margin-left:22px;margin-top:-2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--coral);color:#fff;font-size:11px;line-height:16px;font-weight:600}
+  .aba{position:relative}
+
+  /* sessões */
+  .cabeca{display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px}
+  .cabeca h2{font-weight:500;font-size:20px}
+  .sessao{position:relative;padding:14px 14px 14px 18px;border-radius:16px;background:var(--casco);margin-bottom:10px;overflow:hidden}
+  .sessao::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--cor,var(--apagado))}
+  .sessao h3{font-weight:600;font-size:16.5px;display:flex;justify-content:space-between;gap:10px}
+  .sessao h3 small{font-weight:500;font-size:13px;color:var(--cor,var(--nevoa));white-space:nowrap}
+  .sessao .linha-t{margin-top:6px;font-size:14px;color:var(--nevoa);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .sessao .linha-t em{font-style:normal;color:var(--gelo)}
+  .sessao .pedido-atlas{margin-top:8px;font-size:13.5px;color:var(--ambar)}
+  .sessao .rodape{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:10px}
+  .sessao .rodape span{font-size:13px;color:var(--apagado)}
+  .botao{padding:9px 14px;border-radius:12px;background:var(--casco2);border:1px solid var(--linha);font-size:14.5px;font-weight:500}
+  .botao.principal{background:var(--ciano);color:#04202A;border-color:transparent;font-weight:600}
+  .botao.leve{color:var(--ciano);border-color:rgba(25,227,255,.35);background:transparent}
+
+  /* painel */
+  #v-painel .grade{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .bloco{padding:14px;border-radius:16px;background:var(--casco);min-height:96px}
+  .bloco.largo{grid-column:1 / -1}
+  .bloco h4{font-weight:500;font-size:13.5px;color:var(--nevoa)}
+  .bloco .valor{font-family:var(--n);font-weight:600;font-size:30px;line-height:1.1;margin-top:6px}
+  .bloco .sub{font-size:13.5px;color:var(--nevoa);margin-top:2px}
+  .pomo{display:flex;align-items:center;gap:16px}
+  .pomo svg{width:86px;height:86px;flex:none}
+  .atalhos{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .vazio-painel{color:var(--nevoa);font-size:15px;padding:20px 0}
+
+  /* folhas */
+  #veu{position:fixed;inset:0;background:rgba(1,4,8,.6);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
+  #veu.aberto{opacity:1;pointer-events:auto}
+  .folha{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--casco);border-radius:22px 22px 0 0;padding:10px 18px calc(18px + var(--sa-b));transform:translateY(105%);transition:transform .3s cubic-bezier(.2,.8,.2,1);max-height:88vh;overflow-y:auto}
+  .folha.aberta{transform:none}
+  .folha .puxador{width:40px;height:4px;border-radius:2px;background:var(--linha);margin:0 auto 14px}
+  .folha h3{font-weight:500;font-size:19px;margin-bottom:4px}
+  .folha p{color:var(--nevoa);font-size:14.5px}
+  .folha textarea{width:100%;min-height:110px;margin:14px 0;padding:12px 14px;border-radius:14px;border:1px solid var(--linha);background:var(--abismo);color:var(--gelo);font:inherit;font-size:16px;resize:vertical}
+  .folha .fila{display:flex;gap:10px;justify-content:flex-end;align-items:center}
+  .opcao{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--linha);font-size:15.5px}
+  .opcao small{display:block;color:var(--nevoa);font-size:13px}
+  .chave{width:50px;height:30px;border-radius:15px;background:var(--casco2);position:relative;flex:none;transition:background .2s}
+  .chave::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--gelo);transition:transform .2s}
+  .chave[aria-checked=true]{background:var(--ciano)}
+  .chave[aria-checked=true]::after{transform:translateX(20px)}
+
+  /* pareamento */
+  #parear{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;padding:calc(24px + var(--sa-t)) 26px calc(24px + var(--sa-b));gap:14px;max-width:520px;margin:0 auto}
+  #parear h1{font-weight:500;font-size:30px;line-height:1.15}
+  #parear p{color:var(--nevoa)}
+  #parear ol{color:var(--nevoa);padding-left:20px;display:grid;gap:6px;font-size:15px}
+  #parear textarea{min-height:90px;padding:12px 14px;border-radius:14px;border:1px solid var(--linha);background:var(--casco);color:var(--gelo);font:inherit;font-size:14px}
+  #parear .erro{color:var(--coral);font-size:14px;min-height:20px}
+  #orbeParear{width:120px;height:120px}
+
+  #aviso{position:fixed;left:50%;top:calc(12px + var(--sa-t));transform:translate(-50%,-140%);visibility:hidden;background:var(--casco2);border:1px solid var(--linha);padding:10px 16px;border-radius:14px;font-size:14px;z-index:30;transition:transform .3s;max-width:90vw}
+  #aviso.visivel{transform:translate(-50%,0);visibility:visible}
+
+  @media (min-width:700px){ #app{max-width:560px;margin:0 auto;border-left:1px solid var(--linha);border-right:1px solid var(--linha)} .folha{max-width:560px;margin:0 auto} }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+</style>
+</head>
+<body>
+
+<!-- pareamento: primeira vez neste celular -->
+<section id="parear" class="oculto" aria-labelledby="tParear">
+  <canvas id="orbeParear" aria-hidden="true"></canvas>
+  <h1 id="tParear">Ligue este celular ao seu Atlas</h1>
+  <p>O app conversa com o Atlas do notebook por um canal cifrado. A chave fica só aqui e lá.</p>
+  <ol>
+    <li>No notebook, rode <b>Parear_Celular.bat</b> na pasta do Atlas.</li>
+    <li>Toque no link que chegar no ntfy, ou cole aqui o código que aparecer na tela.</li>
+  </ol>
+  <textarea id="codigo" placeholder="Cole o código de pareamento" autocomplete="off" spellcheck="false"></textarea>
+  <div class="erro" id="erroParear" role="alert"></div>
+  <button class="botao principal" id="btParear">Ligar ao Atlas</button>
+</section>
+
+<div id="app" class="oculto">
+  <header id="topo">
+    <div id="conexao" role="status" aria-live="polite"><i></i><span>Procurando o notebook…</span></div>
+    <button class="icone" id="btConfig" aria-label="Ajustes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <div id="nucleo">
+    <canvas id="orbe" role="button" tabindex="0" aria-label="Tocar para falar com o Atlas"></canvas>
+    <div id="legenda" aria-live="polite">Toque no núcleo para falar</div>
+  </div>
+
+  <div id="faixa" aria-label="Estado do notebook"></div>
+
+  <main id="telas" style="min-height:0;display:grid">
+    <section class="tela" id="v-conversa" aria-label="Conversa"></section>
+    <section class="tela oculto" id="v-sessoes" aria-label="Sessões do Claude"></section>
+    <section class="tela oculto" id="v-painel" aria-label="Painel"></section>
+  </main>
+
+  <form id="compor" autocomplete="off">
+    <textarea id="texto" rows="1" placeholder="Escreva para o Atlas" enterkeyhint="send"></textarea>
+    <button type="button" class="redondo" id="falar" aria-label="Falar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <button type="submit" class="redondo" id="enviar" aria-label="Enviar" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+    </button>
+  </form>
+
+  <nav id="abas" role="tablist">
+    <button class="aba" role="tab" aria-selected="true" data-tela="conversa">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h16v11H9l-5 4z" stroke-linejoin="round"/></svg>Conversa</button>
+    <button class="aba" role="tab" aria-selected="false" data-tela="sessoes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><circle cx="7" cy="7" r="1" fill="currentColor"/><circle cx="7" cy="17" r="1" fill="currentColor"/></svg>Sessões<span class="bolha oculto" id="bolhaSessoes"></span></button>
+    <button class="aba" role="tab" aria-selected="false" data-tela="painel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Painel</button>
+  </nav>
+</div>
+
+<div id="veu"></div>
+
+<section class="folha" id="folhaSessao" aria-labelledby="tSessao" role="dialog">
+  <div class="puxador"></div>
+  <h3 id="tSessao">Pedido para a sessão</h3>
+  <p id="pSessao">O Atlas retoma esta sessão do Claude Code no notebook e manda o pedido. A resposta aparece na conversa.</p>
+  <textarea id="textoSessao" placeholder="O que essa sessão deve fazer?"></textarea>
+  <div class="fila">
+    <button class="redondo" id="falarSessao" aria-label="Falar o pedido"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <button class="botao" data-fechar>Cancelar</button>
+    <button class="botao principal" id="btEnviarSessao">Mandar para a sessão</button>
+  </div>
+</section>
+
+<section class="folha" id="folhaConfig" aria-labelledby="tConfig" role="dialog">
+  <div class="puxador"></div>
+  <h3 id="tConfig">Ajustes</h3>
+  <div class="opcao"><div>Falar as respostas<small>O celular lê em voz alta o que o Atlas responder</small></div><button class="chave" role="switch" id="optVoz" aria-checked="true" aria-label="Falar as respostas"></button></div>
+  <div class="opcao"><div>Vibrar<small>Ao receber respostas e pedidos de confirmação</small></div><button class="chave" role="switch" id="optVibrar" aria-checked="true" aria-label="Vibrar"></button></div>
+  <div class="opcao"><div>Apagar a conversa<small>Só neste celular; o Atlas não esquece nada</small></div><button class="botao" id="btLimpar">Apagar</button></div>
+  <div class="opcao"><div>Desligar este celular<small>Remove a chave; para voltar, pareie de novo</small></div><button class="botao" id="btDesparear" style="color:var(--coral)">Desligar</button></div>
+  <p style="margin-top:14px;font-size:13px" id="versao"></p>
+</section>
+
+<div id="aviso" role="status"></div>
+
+<script>
+'use strict';
+const VERSAO = '1.0';
+const $ = s => document.querySelector(s);
+const guardar = (k, v) => { try { localStorage.setItem('atlas.' + k, JSON.stringify(v)); } catch (e) { } };
+const ler = (k, padrao) => { try { const v = localStorage.getItem('atlas.' + k); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; } };
+const reduzir = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ═════════════ cifra (compatível com atlas/alexa_ponte.py) ═════════════
+// k = bytes da chave; ke = SHA256("atlas-enc"+k); km = SHA256("atlas-mac"+k)
+// fluxo = HMAC(ke, nonce||i) ...; c = dados XOR fluxo; etiqueta = HMAC(km, nonce||c)[:16]; base64 urlsafe
+const enc = new TextEncoder(), dec = new TextDecoder();
+let CH = null;     // {ke, km} (CryptoKey)
+function hex2bytes(h) { const b = new Uint8Array(h.length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16); return b; }
+function juntar(...ps) { const n = ps.reduce((a, p) => a + p.length, 0), o = new Uint8Array(n); let i = 0; for (const p of ps) { o.set(p, i); i += p.length; } return o; }
+async function prepararChaves(hex) {
+  const k = hex2bytes(hex);
+  const ke = new Uint8Array(await crypto.subtle.digest('SHA-256', juntar(enc.encode('atlas-enc'), k)));
+  const km = new Uint8Array(await crypto.subtle.digest('SHA-256', juntar(enc.encode('atlas-mac'), k)));
+  const imp = r => crypto.subtle.importKey('raw', r, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  CH = { ke: await imp(ke), km: await imp(km) };
+}
+const hmac = async (key, dados) => new Uint8Array(await crypto.subtle.sign('HMAC', key, dados));
+async function fluxo(nonce, n) {
+  const partes = []; let t = 0, i = 0;
+  while (t < n) { const ctr = new Uint8Array(4); new DataView(ctr.buffer).setUint32(0, i++); const b = await hmac(CH.ke, juntar(nonce, ctr)); partes.push(b); t += b.length; }
+  return juntar(...partes).slice(0, n);
+}
+function b64u(bytes) { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_'); }
+function deB64u(s) { s = s.trim().replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const r = atob(s), b = new Uint8Array(r.length); for (let i = 0; i < r.length; i++) b[i] = r.charCodeAt(i); return b; }
+async function cifrar(obj) {
+  const dados = enc.encode(JSON.stringify(obj)), nonce = crypto.getRandomValues(new Uint8Array(12));
+  const f = await fluxo(nonce, dados.length), c = dados.map((x, i) => x ^ f[i]);
+  const tag = (await hmac(CH.km, juntar(nonce, c))).slice(0, 16);
+  return b64u(juntar(nonce, c, tag));
+}
+async function decifrar(texto) {
+  try {
+    const b = deB64u(texto); if (b.length < 29) return null;
+    const nonce = b.slice(0, 12), c = b.slice(12, -16), tag = b.slice(-16);
+    const certo = (await hmac(CH.km, juntar(nonce, c))).slice(0, 16);
+    let dif = 0; for (let i = 0; i < 16; i++) dif |= certo[i] ^ tag[i]; if (dif) return null;
+    const f = await fluxo(nonce, c.length);
+    return JSON.parse(dec.decode(c.map((x, i) => x ^ f[i])));
+  } catch (e) { return null; }
+}
+
+// ═════════════ estado ═════════════
+let PAR = ler('par', null);                  // {s: servidor, t: tópico, k: chave hex, n: nome}
+let MSGS = ler('msgs', []);                  // [{id, de, texto, t, estado, para?, pergunta?, sensivel?, detalhe?, respondida?}]
+let OPC = Object.assign({ voz: true, vibrar: true }, ler('opc', {}));
+let ultimoId = ler('ultimoId', null);
+const espera = new Map();                    // id → callback (pedidos internos: status, sessões)
+let STATUS = ler('status', null), SESSOES = ler('sessoes', []), tStatus = 0, online = null;
+let telaAtual = 'conversa';
+
+function salvarMsgs() { MSGS = MSGS.slice(-120); guardar('msgs', MSGS); }
+function novoId() { return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join(''); }
+function vibrar(p) { if (OPC.vibrar && navigator.vibrate) try { navigator.vibrate(p); } catch (e) { } }
+function aviso(t, ms = 2600) { const a = $('#aviso'); a.textContent = t; a.classList.add('visivel'); clearTimeout(aviso.tm); aviso.tm = setTimeout(() => a.classList.remove('visivel'), ms); }
+function haQuanto(t) {
+  const s = Math.max(0, (Date.now() / 1000) - t);
+  if (s < 50) return 'agora'; if (s < 3600) return 'há ' + Math.round(s / 60) + ' min';
+  if (s < 86400) return 'há ' + Math.round(s / 3600) + ' h';
+  return new Date(t * 1000).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+}
+const hora = t => new Date(t * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+// ═════════════ canal (ntfy) ═════════════
+let leitor = null, abortar = null, reconectar = null, falhas = 0;
+async function publicar(obj) {
+  const r = await fetch(PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-c', { method: 'POST', body: await cifrar(obj) });
+  if (!r.ok) throw new Error('canal ' + r.status);
+}
+async function enviarAoAtlas(id, texto, extra = {}) {
+  await publicar(Object.assign({ id, t: Date.now() / 1000, texto, origem: 'mobile' }, extra));
+}
+function ouvir() {
+  if (abortar) abortar.abort();
+  abortar = new AbortController();
+  const desde = ultimoId || '10m';
+  const url = PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-r/json?since=' + encodeURIComponent(desde);
+  fetch(url, { signal: abortar.signal, cache: 'no-store' }).then(async r => {
+    if (!r.ok || !r.body) throw new Error('canal ' + r.status);
+    falhas = 0; leitor = r.body.getReader(); let resto = '';
+    for (;;) {
+      const { value, done } = await leitor.read(); if (done) break;
+      resto += dec.decode(value, { stream: true });
+      let i; while ((i = resto.indexOf('\n')) >= 0) { const linha = resto.slice(0, i); resto = resto.slice(i + 1); if (linha.trim()) await chegou(linha); }
+    }
+    throw new Error('fim');
+  }).catch(e => {
+    if (e.name === 'AbortError') return;
+    falhas++; clearTimeout(reconectar); reconectar = setTimeout(ouvir, Math.min(30000, 1000 * 2 ** Math.min(falhas, 5)));
+  });
+}
+async function chegou(linha) {
+  let ev; try { ev = JSON.parse(linha); } catch (e) { return; }
+  if (ev.event !== 'message') return;
+  ultimoId = ev.id; guardar('ultimoId', ultimoId);
+  const m = await decifrar(ev.message || ''); if (!m || !m.id) return;
+  if (espera.has(m.id)) { const f = espera.get(m.id); espera.delete(m.id); f(m); return; }
+  const alvo = MSGS.find(x => x.id === m.id && x.de === 'atlas');
+  if (!alvo) return;                                             // resposta de outro aparelho / da Alexa
+  if (m.pergunta) {
+    Object.assign(alvo, { estado: 'pergunta', texto: m.fala, pergunta: true, sensivel: !!m.sensivel, detalhe: m.detalhe || '', respondida: false, t: Date.now() / 1000 });
+    vibrar([60, 80, 60]); falar(m.fala); estadoOrbe('ocioso');
+  } else if (m.pendente) {
+    if (alvo.estado === 'enviando') alvo.estado = 'pendente';
+    if (m.fala) alvo.nota = m.fala;
+  } else if (m.fala && alvo.pergunta) {                          // resultado depois do "sim": nova fala, a pergunta fica
+    alvo.estado = 'ok';
+    if (!MSGS.some(x => x.id === m.id + ':fim')) MSGS.push({ id: m.id + ':fim', de: 'atlas', texto: m.fala, t: Date.now() / 1000, estado: m.ok === false ? 'erro' : 'ok' });
+    vibrar(40); falar(m.fala); estadoOrbe('ocioso');
+  } else if (m.fala) {
+    Object.assign(alvo, { estado: m.ok === false ? 'erro' : 'ok', texto: m.fala, t: Date.now() / 1000 });
+    vibrar(40); falar(m.fala);
+    if (!MSGS.some(x => x.estado === 'pendente' || x.estado === 'enviando')) estadoOrbe('ocioso');
+  }
+  salvarMsgs(); desenharConversa();
+}
+function pedirInterno(texto, extra, prazo = 8000) {
+  return new Promise(async (res, rej) => {
+    let id; const tm = setTimeout(() => { espera.delete(id); rej(new Error('sem resposta')); }, prazo);
+    try { id = novoId(); espera.set(id, m => { clearTimeout(tm); res(m); }); await publicar(Object.assign({ id, t: Date.now() / 1000, texto, origem: 'mobile' }, extra || {})); }
+    catch (e) { clearTimeout(tm); espera.delete(id); rej(e); }
+  });
+}
+
+// ═════════════ conversa ═════════════
+async function perguntar(texto, extra = {}, para = null) {
+  texto = texto.trim(); if (!texto) return;
+  const t = Date.now() / 1000;
+  MSGS.push({ id: 'eu-' + novoId(), de: 'eu', texto, t, para });
+  const resp = { id: novoId(), de: 'atlas', texto: '', t, estado: 'enviando' };
+  MSGS.push(resp); salvarMsgs(); desenharConversa(); compactar(); estadoOrbe('pensando');
+  try {
+    if (extra.texto === '__sessao__') await enviarAoAtlas(resp.id, '__sessao__', { sessao: extra.sessao, pedido: extra.pedido });
+    else await enviarAoAtlas(resp.id, texto);
+    setTimeout(() => { if (resp.estado === 'enviando') { resp.estado = 'pendente'; resp.nota = 'O notebook ainda não respondeu. Ele está ligado, com o Atlas aberto?'; desenharConversa(); } }, 15000);
+  } catch (e) {
+    Object.assign(resp, { estado: 'erro', texto: 'Não consegui mandar o pedido. Confira a internet do celular e tente de novo.' });
+    salvarMsgs(); desenharConversa(); estadoOrbe('ocioso');
+  }
+}
+function responderPergunta(msg, decisao) {
+  msg.respondida = decisao; salvarMsgs(); desenharConversa();
+  perguntar(decisao === 'sim' ? 'sim' : decisao === 'tudo' ? 'pode tudo' : 'não');
+}
+const SUGESTOES = ['O que tenho para hoje?', 'Como está o build do SG-Tools?', 'Começa um pomodoro', 'Como está o computador?'];
+function desenharConversa() {
+  const box = $('#v-conversa'), noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  box.textContent = '';
+  if (!MSGS.length) {
+    const v = document.createElement('div'); v.className = 'vazio';
+    v.innerHTML = '<h2>Pode pedir.</h2>Fale no núcleo ou escreva aqui embaixo. O Atlas responde do seu notebook, e o que demorar aparece aqui quando ficar pronto.';
+    const s = document.createElement('div'); s.className = 'sugestoes';
+    for (const t of SUGESTOES) { const b = document.createElement('button'); b.className = 'sugestao'; b.textContent = t; b.onclick = () => perguntar(t); s.appendChild(b); }
+    v.appendChild(s); box.appendChild(v); return;
+  }
+  for (const m of MSGS) {
+    const d = document.createElement('div');
+    d.className = 'msg ' + m.de + (m.de === 'atlas' ? ' ' + (m.estado || 'ok') : '');
+    if (m.para) { const p = document.createElement('span'); p.className = 'para'; p.textContent = 'Para a sessão ' + m.para; d.appendChild(p); }
+    if (m.de === 'atlas' && (m.estado === 'enviando' || m.estado === 'pendente')) {
+      const tr = document.createElement('div'); tr.className = 'trab';
+      tr.innerHTML = '<i></i><span></span>'; tr.querySelector('span').textContent = m.estado === 'enviando' ? 'Mandando ao notebook…' : 'Trabalhando, ' + tempoDesde(m.t);
+      d.appendChild(tr);
+      if (m.nota) { const n = document.createElement('span'); n.className = 'detalhe'; n.textContent = m.nota; d.appendChild(n); }
+    } else {
+      d.appendChild(document.createTextNode(m.texto));
+      if (m.pergunta) {
+        if (m.detalhe && m.sensivel) { const dt = document.createElement('span'); dt.className = 'detalhe'; dt.textContent = m.detalhe.slice(0, 220); d.appendChild(dt); }
+        const a = document.createElement('div'); a.className = 'acoes';
+        const ops = [['sim', 'Sim, pode'], ['nao', 'Não']]; if (!m.sensivel) ops.push(['tudo', 'Liberar o resto']);
+        for (const [k, rot] of ops) {
+          const b = document.createElement('button'); b.className = 'acao ' + k; b.textContent = rot; b.disabled = !!m.respondida;
+          if (m.respondida === k) b.style.outline = '2px solid var(--gelo)';
+          b.onclick = () => responderPergunta(m, k); a.appendChild(b);
+        }
+        d.appendChild(a);
+      }
+      const q = document.createElement('span'); q.className = 'quando'; q.textContent = hora(m.t); d.appendChild(q);
+    }
+    box.appendChild(d);
+  }
+  if (noFim || MSGS.length < 3) box.scrollTop = box.scrollHeight;
+}
+function tempoDesde(t) { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? s + ' s' : Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s'; }
+setInterval(() => { if (telaAtual === 'conversa' && MSGS.some(m => m.estado === 'pendente' || m.estado === 'enviando')) desenharConversa(); }, 1000);
+function compactar() { $('#app').classList.toggle('compacto', MSGS.length > 0 || telaAtual !== 'conversa'); }
+
+// ═════════════ painel e faixa ═════════════
+const CLIMA = { 0: 'céu limpo', 1: 'quase limpo', 2: 'parcialmente nublado', 3: 'nublado', 45: 'neblina', 48: 'neblina', 51: 'garoa', 53: 'garoa', 55: 'garoa forte', 61: 'chuva fraca', 63: 'chuva', 65: 'chuva forte', 80: 'pancadas', 81: 'pancadas', 82: 'pancadas fortes', 95: 'trovoadas' };
+function fmtMin(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+async function atualizarStatus() {
+  try {
+    const m = await pedirInterno('__status__', null, 9000);
+    STATUS = m.status; tStatus = Date.now(); guardar('status', STATUS); marcarOnline(true);
+  } catch (e) { marcarOnline(false); }
+  desenharFaixa(); if (telaAtual === 'painel') desenharPainel();
+}
+function marcarOnline(v) {
+  online = v; const c = $('#conexao');
+  c.className = v ? 'on' : 'off';
+  c.querySelector('span').textContent = v ? (PAR.n || 'Atlas') + ' no notebook' : 'Notebook sem resposta. O Atlas está aberto?';
+  if (!v && estadoAtual === 'ocioso') estadoOrbe('offline'); else if (v && estadoAtual === 'offline') estadoOrbe('ocioso');
+}
+function chip(txt, valor, cls) { const c = document.createElement('div'); c.className = 'chip ' + (cls || ''); const b = document.createElement('b'); b.textContent = valor; c.append(b, txt); return c; }
+function desenharFaixa() {
+  const f = $('#faixa'); f.textContent = ''; const s = STATUS; if (!s) return;
+  if (s.build) f.appendChild(chip(' build', s.build.fase === 'ok' ? 'OK' : s.build.fase === 'erro' ? (s.build.erros || '') + ' erro' + (s.build.erros === 1 ? '' : 's') : (s.build.rotulo || '').toLowerCase(), s.build.fase === 'ok' ? 'ok' : s.build.fase === 'erro' ? 'alerta' : 'vivo'));
+  const r = s.rotina || {};
+  if (r.pomodoro && r.pomodoro.fase && r.pomodoro.fase !== 'parado') f.appendChild(chip(r.pomodoro.fase === 'foco' ? ' de foco' : ' de pausa', fmtMin(r.pomodoro.restante_s - (Date.now() - tStatus) / 1000 * (r.pomodoro.pausado ? 0 : 1)), 'vivo'));
+  if (r.tarefas && r.tarefas.total) f.appendChild(chip(' tarefas', r.tarefas.feitas + '/' + r.tarefas.total));
+  if (s.hw && s.hw.cpu_temp != null) f.appendChild(chip(' processador', Math.round(s.hw.cpu_temp) + '°', s.hw.cpu_temp >= 90 ? 'alerta' : ''));
+  if (s.ram != null) f.appendChild(chip(' memória', Math.round(s.ram) + '%', s.ram >= 85 ? 'alerta' : ''));
+  if (s.clima && s.clima.temp != null) f.appendChild(chip(' ' + (s.clima.cidade || '').split(/[·,]/)[0].trim(), Math.round(s.clima.temp) + '°'));
+}
+setInterval(() => { if (STATUS && STATUS.rotina && STATUS.rotina.pomodoro && STATUS.rotina.pomodoro.fase !== 'parado') { desenharFaixa(); if (telaAtual === 'painel') desenharPomo(); } }, 1000);
+function anel(frac, cor) {
+  const r = 36, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
+  return `<svg viewBox="0 0 86 86" aria-hidden="true"><circle cx="43" cy="43" r="${r}" fill="none" stroke="rgba(127,227,240,.12)" stroke-width="7"/><circle cx="43" cy="43" r="${r}" fill="none" stroke="${cor}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c * f} ${c}" transform="rotate(-90 43 43)"/></svg>`;
+}
+function desenharPomo() {
+  const el = $('#blocoPomo'); if (!el || !STATUS) return; const p = (STATUS.rotina || {}).pomodoro || {};
+  if (!p.fase || p.fase === 'parado') { el.innerHTML = `<div class="pomo">${anel(0, 'var(--ambar)')}<div><h4>Pomodoro</h4><div class="valor">Parado</div><div class="sub">${p.hoje ? p.hoje + ' ciclo' + (p.hoje > 1 ? 's' : '') + ' hoje, ' + p.hoje_min + ' min de foco' : 'Nenhum ciclo hoje'}</div></div></div>`; return; }
+  const rest = p.restante_s - (p.pausado ? 0 : (Date.now() - tStatus) / 1000);
+  el.innerHTML = `<div class="pomo">${anel(1 - rest / (p.total_s || 1), p.fase === 'foco' ? 'var(--ambar)' : 'var(--menta)')}<div><h4>${p.fase === 'foco' ? 'Foco' : 'Pausa'}${p.pausado ? ', pausado' : ''}</h4><div class="valor">${fmtMin(rest)}</div><div class="sub">${p.tarefa ? 'Em: ' + escapar(p.tarefa) : 'Ciclo ' + (p.ciclo || 1) + ' de ' + (p.ciclos || 4)}</div></div></div>`;
+}
+function escapar(t) { return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function desenharPainel() {
+  const v = $('#v-painel'), s = STATUS;
+  if (!s) { v.innerHTML = '<div class="vazio-painel">Ainda sem dados do notebook. Assim que ele responder, o painel aparece aqui.</div>'; return; }
+  const r = s.rotina || {}, t = r.tarefas || {}, b = s.build || {}, sg = s.sgtools || {}, hw = s.hw || {}, cl = s.clima || {};
+  const sgTxt = sg.rodando ? 'Trabalhando em: ' + escapar(sg.rodando.pedido) : sg.aguardando_build ? 'Feito, esperando o build' : sg.ultimo ? 'Último: ' + escapar(sg.ultimo.resumo || sg.ultimo.pedido) : 'Nenhum pedido recente';
+  v.innerHTML = `
+    <div class="cabeca"><h2>Notebook</h2><span style="font-size:13px;color:var(--apagado)">Atualizado ${haQuanto(s.t)}</span></div>
+    <div class="grade">
+      <div class="bloco largo" id="blocoPomo"></div>
+      <div class="bloco"><h4>Tarefas de hoje</h4><div class="valor">${t.total ? t.feitas + ' de ' + t.total : '—'}</div><div class="sub">${t.proxima ? 'Próxima: ' + escapar(t.proxima) : t.total ? 'Tudo feito' : 'Nenhuma tarefa'}</div></div>
+      <div class="bloco"><h4>Build do SG-Tools</h4><div class="valor" style="color:${b.fase === 'ok' ? 'var(--menta)' : b.fase === 'erro' ? 'var(--coral)' : 'var(--ambar)'}">${b.fase === 'ok' ? 'OK' : b.fase === 'erro' ? (b.erros || '') + ' erro' + (b.erros === 1 ? '' : 's') : escapar((b.rotulo || '—').toLowerCase())}</div><div class="sub">${s.revit ? 'Revit aberto' : 'Revit fechado'}</div></div>
+      <div class="bloco largo"><h4>Pedidos ao SG-Tools</h4><div class="sub" style="color:var(--gelo);font-size:15px;margin-top:6px">${sgTxt}</div></div>
+      <div class="bloco"><h4>Processador</h4><div class="valor">${hw.cpu_temp != null ? Math.round(hw.cpu_temp) + '°' : (s.cpu != null ? Math.round(s.cpu) + '%' : '—')}</div><div class="sub">${s.cpu != null ? 'Uso de ' + Math.round(s.cpu) + '%' : ''}${s.ram != null ? ', memória ' + Math.round(s.ram) + '%' : ''}</div></div>
+      <div class="bloco"><h4>${escapar((cl.cidade || 'Clima').split(/[·,]/)[0])}</h4><div class="valor">${cl.temp != null ? Math.round(cl.temp) + '°' : '—'}</div><div class="sub">${CLIMA[cl.codigo] || ''}</div></div>
+    </div>
+    <div class="atalhos">
+      ${['Começa um pomodoro', 'Pausa o pomodoro', 'Quais são minhas tarefas de hoje?', 'Otimiza a memória', 'Compila o SG-Tools', 'Quais os erros do build?'].map(x => `<button class="sugestao" data-pedir="${escapar(x)}">${escapar(x)}</button>`).join('')}
+    </div>`;
+  desenharPomo();
+  v.querySelectorAll('[data-pedir]').forEach(b => b.onclick = () => { trocarTela('conversa'); perguntar(b.dataset.pedir); });
+}
+
+// ═════════════ sessões ═════════════
+const ROT_SES = { trabalhando: 'Trabalhando', aprovacao: 'Esperando aprovação', aguardando: 'Aguardando você', concluida: 'Concluída', parada: 'Parada' };
+const COR_SES = { trabalhando: 'var(--ambar)', aprovacao: 'var(--coral)', aguardando: 'var(--ciano)', concluida: 'var(--menta)', parada: 'var(--apagado)' };
+let sessaoAlvo = null;
+async function atualizarSessoes(mostrarErro) {
+  try { const m = await pedirInterno('__sessoes__', null, 9000); SESSOES = m.sessoes || []; guardar('sessoes', SESSOES); marcarOnline(true); }
+  catch (e) { if (mostrarErro) aviso('O notebook não respondeu. Mostrando a última lista.'); }
+  const n = SESSOES.filter(s => s.estado === 'aprovacao').length, bo = $('#bolhaSessoes');
+  bo.textContent = n; bo.classList.toggle('oculto', !n);
+  if (telaAtual === 'sessoes') desenharSessoes();
+}
+function desenharSessoes() {
+  const v = $('#v-sessoes');
+  v.innerHTML = `<div class="cabeca"><h2>Sessões do Claude</h2><button class="botao" id="btAtualSes">Atualizar</button></div>`;
+  $('#btAtualSes').onclick = () => atualizarSessoes(true);
+  if (!SESSOES.length) { v.insertAdjacentHTML('beforeend', '<div class="vazio-painel">Nenhuma sessão nas últimas 12 horas.</div>'); return; }
+  for (const s of SESSOES) {
+    const d = document.createElement('article'); d.className = 'sessao'; d.style.setProperty('--cor', COR_SES[s.estado] || 'var(--apagado)');
+    const quando = s.idade_s != null ? haQuanto(Date.now() / 1000 - s.idade_s) : '';
+    const nome = (s.nome || 'sessão').replace(/^Cowork\s*[·:-]\s*/, '');
+    d.innerHTML = `<h3><span>${escapar(nome)}</span><small>${escapar(ROT_SES[s.estado] || s.estado || '')}</small></h3>
+      ${s.ultimo_pedido ? `<div class="linha-t"><em>Você:</em> ${escapar(s.ultimo_pedido)}</div>` : ''}
+      ${s.ultima_resposta ? `<div class="linha-t"><em>Claude:</em> ${escapar(s.ultima_resposta)}</div>` : ''}
+      ${s.pedido_atlas ? `<div class="pedido-atlas">Pedido do Atlas ${s.pedido_atlas.fase === 'esperando' ? 'esperando a sessão parar' : 'em andamento'}: ${escapar(s.pedido_atlas.pedido)}</div>` : ''}
+      <div class="rodape"><span>${s.fonte === 'cowork' ? 'Cowork, só acompanhamento' : 'Claude Code'}${quando ? ', ' + quando : ''}</span>${s.pode_pedir ? '<button class="botao leve">Mandar pedido</button>' : ''}</div>`;
+    const b = d.querySelector('.botao.leve'); if (b) b.onclick = () => abrirSessao(s);
+    v.appendChild(d);
+  }
+}
+function abrirSessao(s) {
+  sessaoAlvo = s; $('#tSessao').textContent = 'Pedido para ' + (s.nome || 'a sessão');
+  $('#pSessao').textContent = s.estado === 'trabalhando' ? 'Ela está trabalhando agora: o Atlas manda o pedido assim que ela parar. A resposta aparece na conversa.' : 'O Atlas retoma esta sessão no notebook e manda o pedido. A resposta aparece na conversa.';
+  $('#textoSessao').value = ''; abrirFolha('#folhaSessao'); setTimeout(() => $('#textoSessao').focus(), 320);
+}
+$('#btEnviarSessao').onclick = () => {
+  const p = $('#textoSessao').value.trim(); if (!p || !sessaoAlvo) return;
+  fecharFolhas(); trocarTela('conversa');
+  perguntar(p, { texto: '__sessao__', sessao: sessaoAlvo.id, pedido: p }, sessaoAlvo.nome);
+  setTimeout(() => atualizarSessoes(false), 4000);
+};
+
+// ═════════════ folhas, abas, ajustes ═════════════
+function abrirFolha(sel) { $('#veu').classList.add('aberto'); $(sel).classList.add('aberta'); }
+function fecharFolhas() { $('#veu').classList.remove('aberto'); document.querySelectorAll('.folha').forEach(f => f.classList.remove('aberta')); pararEscuta(); }
+$('#veu').onclick = fecharFolhas; document.querySelectorAll('[data-fechar]').forEach(b => b.onclick = fecharFolhas);
+function trocarTela(nome) {
+  telaAtual = nome;
+  document.querySelectorAll('.aba').forEach(a => a.setAttribute('aria-selected', a.dataset.tela === nome));
+  for (const t of ['conversa', 'sessoes', 'painel']) $('#v-' + t).classList.toggle('oculto', t !== nome);
+  $('#compor').classList.toggle('oculto', nome !== 'conversa');
+  compactar();
+  if (nome === 'sessoes') { desenharSessoes(); atualizarSessoes(false); }
+  if (nome === 'painel') { desenharPainel(); atualizarStatus(); }
+  if (nome === 'conversa') desenharConversa();
+}
+document.querySelectorAll('.aba').forEach(a => a.onclick = () => trocarTela(a.dataset.tela));
+function marcar(el, v) { el.setAttribute('aria-checked', v ? 'true' : 'false'); }
+$('#btConfig').onclick = () => { marcar($('#optVoz'), OPC.voz); marcar($('#optVibrar'), OPC.vibrar); $('#versao').textContent = 'Atlas Mobile ' + VERSAO + (PAR ? ', canal ' + PAR.t.slice(0, 10) + '…' : ''); abrirFolha('#folhaConfig'); };
+$('#optVoz').onclick = () => { OPC.voz = !OPC.voz; marcar($('#optVoz'), OPC.voz); guardar('opc', OPC); if (!OPC.voz) speechSynthesis.cancel(); };
+$('#optVibrar').onclick = () => { OPC.vibrar = !OPC.vibrar; marcar($('#optVibrar'), OPC.vibrar); guardar('opc', OPC); };
+$('#btLimpar').onclick = () => { MSGS = []; salvarMsgs(); fecharFolhas(); trocarTela('conversa'); aviso('Conversa apagada neste celular.'); };
+$('#btDesparear').onclick = () => { if ($('#btDesparear').dataset.ok !== '1') { $('#btDesparear').dataset.ok = '1'; $('#btDesparear').textContent = 'Tocar de novo para desligar'; return; } try { localStorage.clear(); } catch (e) { } location.replace(location.pathname); };
+
+// ═════════════ voz ═════════════
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, alvoVoz = null;
+function escutar(campo, aoTerminar) {
+  if (!SR) { aviso('Este navegador não reconhece fala. Use o microfone do teclado.', 3600); campo.focus(); return; }
+  if (rec) { pararEscuta(); return; }
+  speechSynthesis.cancel();
+  rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = false; alvoVoz = campo;
+  let final = '';
+  rec.onresult = e => {
+    let parc = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const r = e.results[i]; if (r.isFinal) final += r[0].transcript; else parc += r[0].transcript; }
+    const t = (final + parc).trim(); if (campo) campo.value = t; nivelVoz = 1;
+    if (campo === null) $('#legenda').textContent = t || 'Ouvindo…';
+  };
+  rec.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') aviso('Permita o microfone para este app nas configurações do navegador.', 4000); };
+  rec.onend = () => {
+    const t = final.trim(); rec = null; marcarOuvindo(false);
+    if (aoTerminar) aoTerminar(t);
+  };
+  try { rec.start(); marcarOuvindo(true); vibrar(20); } catch (e) { rec = null; aviso('Não consegui abrir o microfone.'); }
+}
+function pararEscuta() { if (rec) { try { rec.stop(); } catch (e) { } } }
+function marcarOuvindo(v) {
+  $('#falar').classList.toggle('ouvindo', v); $('#falarSessao').classList.toggle('ouvindo', v);
+  if (v) { estadoOrbe('ouvindo'); $('#legenda').textContent = 'Ouvindo…'; $('#legenda').classList.add('viva'); }
+  else { $('#legenda').classList.remove('viva'); if (estadoAtual === 'ouvindo') estadoOrbe('ocioso'); legendaPadrao(); }
+}
+function legendaPadrao() { if (estadoAtual === 'ocioso' || estadoAtual === 'offline') $('#legenda').textContent = online === false ? 'O notebook não responde agora' : 'Toque no núcleo para falar'; }
+let vozPt = null;
+function escolherVoz() { const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)BR/i.test(v.lang)); vozPt = vs.find(v => /natural|online|google/i.test(v.name)) || vs[0] || null; }
+if ('speechSynthesis' in window) { escolherVoz(); speechSynthesis.onvoiceschanged = escolherVoz; }
+function falar(t) {
+  if (!OPC.voz || !('speechSynthesis' in window) || document.hidden || !t) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(t.replace(/[*#_`>|~]/g, '')); u.lang = 'pt-BR'; if (vozPt) u.voice = vozPt; u.rate = 1.04;
+  u.onstart = () => estadoOrbe('falando'); u.onboundary = () => { nivelVoz = 1; };
+  u.onend = u.onerror = () => { if (estadoAtual === 'falando') estadoOrbe(MSGS.some(m => m.estado === 'pendente' || m.estado === 'enviando') ? 'pensando' : 'ocioso'); };
+  speechSynthesis.speak(u);
+}
+function falarPedido() { escutar(null, t => { if (t) perguntar(t); else legendaPadrao(); }); }
+$('#orbe').addEventListener('click', falarPedido);
+$('#orbe').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); falarPedido(); } });
+$('#falar').onclick = () => escutar($('#texto'), t => { if (t) { $('#texto').value = ''; atualizarEnviar(); perguntar(t); } });
+$('#falarSessao').onclick = () => escutar($('#textoSessao'), null);
+
+// compositor
+const campo = $('#texto');
+function atualizarEnviar() { $('#enviar').disabled = !campo.value.trim(); campo.style.height = 'auto'; campo.style.height = Math.min(120, campo.scrollHeight) + 'px'; }
+campo.addEventListener('input', atualizarEnviar);
+campo.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); $('#compor').requestSubmit(); } });
+$('#compor').addEventListener('submit', e => { e.preventDefault(); const t = campo.value; if (!t.trim()) return; campo.value = ''; atualizarEnviar(); perguntar(t); });
+
+// ═════════════ núcleo (anéis como isobáricas) ═════════════
+let estadoAtual = 'ocioso', nivelVoz = 0;
+function estadoOrbe(e) { estadoAtual = e; if (e === 'ocioso' || e === 'offline') legendaPadrao(); if (e === 'pensando') $('#legenda').textContent = 'Trabalhando no notebook…'; }
+function desenharOrbe(cv, tempo, est) {
+  const dpr = Math.min(2, devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+  if (!w) return;
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 4, t = tempo / 1000;
+  const cor = est === 'pensando' ? [255, 181, 71] : est === 'ouvindo' ? [255, 92, 119] : est === 'offline' ? [120, 150, 165] : [25, 227, 255];
+  const anim = !reduzir;
+  nivelVoz *= 0.92;
+  // brilho do centro
+  const g = c.createRadialGradient(cx, cy, 0, cx, cy, R * .62);
+  g.addColorStop(0, `rgba(${cor},${est === 'offline' ? .12 : .32 + nivelVoz * .25})`); g.addColorStop(1, `rgba(${cor},0)`);
+  c.fillStyle = g; c.beginPath(); c.arc(cx, cy, R * .62, 0, Math.PI * 2); c.fill();
+  // anéis: cada um é uma "isobárica" levemente ondulada
+  const n = R > 60 ? 7 : 4;
+  for (let k = 0; k < n; k++) {
+    const fr = (k + 1) / n, raio = R * (.28 + .7 * fr);
+    const resp = anim ? Math.sin(t * (est === 'ocioso' ? .9 : 2.2) - k * .55) : 0;
+    const amp = (est === 'ouvindo' ? 2.2 + nivelVoz * 7 : est === 'falando' ? 1.6 + nivelVoz * 6 : est === 'pensando' ? 1.4 : .9) * (R / 100) * (1 - fr * .35);
+    c.beginPath();
+    for (let a = 0; a <= 64; a++) {
+      const ang = a / 64 * Math.PI * 2;
+      const onda = anim ? Math.sin(ang * (3 + k % 3) + t * (1.1 + k * .17)) * amp + Math.sin(ang * 5 - t * 1.7 + k) * amp * .4 : 0;
+      const rr = raio + onda + resp * (R / 110);
+      const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
+      a ? c.lineTo(x, y) : c.moveTo(x, y);
+    }
+    c.closePath();
+    c.strokeStyle = `rgba(${cor},${(est === 'offline' ? .18 : .5) * (1 - fr * .55) + (k === 0 ? .25 : 0)})`;
+    c.lineWidth = k === 0 ? 2 : 1.1; c.stroke();
+  }
+  // pensando: arco que percorre o anel externo
+  if (est === 'pensando' && anim) {
+    c.beginPath(); c.arc(cx, cy, R * .98, t * 2.4, t * 2.4 + 1.1); c.strokeStyle = `rgba(${cor},.9)`; c.lineWidth = 2.4; c.lineCap = 'round'; c.stroke();
+  }
+  // núcleo
+  c.beginPath(); c.arc(cx, cy, R * .12 * (1 + nivelVoz * .25), 0, Math.PI * 2); c.fillStyle = `rgba(${cor},${est === 'offline' ? .4 : .95})`; c.fill();
+}
+function laco(tempo) {
+  if (!document.hidden) {
+    if (!$('#app').classList.contains('oculto')) desenharOrbe($('#orbe'), tempo, estadoAtual);
+    if (!$('#parear').classList.contains('oculto')) desenharOrbe($('#orbeParear'), tempo, 'ocioso');
+  }
+  requestAnimationFrame(laco);
+}
+
+// ═════════════ pareamento ═════════════
+function lerCodigo(txt) {
+  txt = (txt || '').trim(); const m = txt.match(/#par=([A-Za-z0-9_\-=]+)/); if (m) txt = m[1];
+  const o = JSON.parse(dec.decode(deB64u(txt)));
+  if (!o.t || !/^[0-9a-f]{64}$/i.test(o.k || '')) throw new Error('código incompleto');
+  return { s: o.s || 'https://ntfy.sh', t: o.t, k: o.k.toLowerCase(), n: o.n || 'Atlas' };
+}
+async function parear(txt) {
+  const e = $('#erroParear');
+  try { PAR = lerCodigo(txt); } catch (x) { e.textContent = 'Esse código não é do Atlas. Copie o código inteiro que aparece no notebook.'; return false; }
+  guardar('par', PAR); guardar('ultimoId', null); ultimoId = null;
+  await iniciar(); return true;
+}
+$('#btParear').onclick = () => parear($('#codigo').value);
+
+// ═════════════ início ═════════════
+async function iniciar() {
+  if (iniciado) return; iniciado = true;
+  await prepararChaves(PAR.k);
+  $('#parear').classList.add('oculto'); $('#app').classList.remove('oculto');
+  // pedidos que ficaram sem resposta: continuam esperando (o canal guarda as respostas por horas)
+  for (const m of MSGS) if (m.de === 'atlas' && m.estado === 'enviando') m.estado = 'pendente';
+  desenharConversa(); desenharFaixa(); compactar(); ouvir(); atualizarStatus(); atualizarSessoes(false);
+  setInterval(() => { if (!document.hidden) atualizarStatus(); }, 30000);
+  setInterval(() => { if (!document.hidden && telaAtual === 'sessoes') atualizarSessoes(false); }, 20000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && CH) { ouvir(); atualizarStatus(); } });
+let iniciado = false;
+function codigoDoLink() {
+  const h = location.hash.match(/^#par=(.+)$/); if (!h) return false;
+  history.replaceState(null, '', location.pathname);
+  try { PAR = lerCodigo(h[1]); guardar('par', PAR); guardar('ultimoId', null); ultimoId = null; return true; } catch (e) { return false; }
+}
+addEventListener('hashchange', async () => {                         // link de pareamento aberto com o app já aberto
+  if (!codigoDoLink()) return;
+  if (iniciado) { await prepararChaves(PAR.k); ouvir(); atualizarStatus(); aviso('Celular ligado ao Atlas.'); } else await iniciar();
+});
+(async function () {
+  codigoDoLink();
+  requestAnimationFrame(laco);
+  if (PAR && PAR.k) await iniciar(); else $('#parear').classList.remove('oculto');
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+})();
+</script>
+</body>
+</html>
