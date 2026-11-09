@@ -174,6 +174,16 @@
   #chatCompor{display:flex;align-items:flex-end;gap:7px;margin:6px 12px 0;padding:5px 5px 5px 12px}
   #chatTexto{flex:1;resize:none;max-height:120px;min-height:38px;padding:8px 6px;border:0;background:transparent;color:var(--branco);font:inherit;font-size:16px;line-height:1.35}
   #chatTexto:focus{outline:none}
+  #chatAnexos{display:flex;gap:6px;margin:6px 12px 0;overflow-x:auto}
+  #chatAnexos:empty{display:none}
+  #chatAnexos .anx{position:relative;flex:none;width:58px;height:58px;border:1px solid var(--linha);background:#000 center/cover no-repeat}
+  #chatAnexos .anx button{position:absolute;top:-1px;right:-1px;width:20px;height:20px;border:0;background:rgba(1,6,11,.85);color:var(--branco);font-size:13px;line-height:20px;padding:0}
+  .msg .imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;white-space:normal}
+  .msg .imgs img{width:132px;height:132px;object-fit:cover;border:1px solid var(--linha);background:rgba(0,0,0,.35);cursor:zoom-in}
+  .msg .imgs img.sem{object-fit:none;opacity:.5}
+  #visor{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.94);display:grid;place-items:center;padding:calc(var(--sa-t) + 10px) 8px calc(var(--sa-b) + 10px)}
+  #visor img{max-width:100%;max-height:100%;object-fit:contain}
+  #visor .cap{position:absolute;left:0;right:0;bottom:calc(var(--sa-b) + 8px);text-align:center;font-size:12px;color:var(--mut);padding:0 12px;overflow-wrap:anywhere}
   #chatEnviar{background:var(--pri);color:#02161D;border-color:var(--pri)}
   #chatEnviar:disabled{background:var(--painel2);color:var(--apag);border-color:var(--linha)}
   .info{color:var(--mut);font-size:14.5px;padding:18px 2px}
@@ -298,7 +308,10 @@
     <button class="icone" id="chatAtual" aria-label="Atualizar a conversa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
   </header>
   <div id="chatLista" class="tela"></div>
+  <div id="chatAnexos"></div>
   <form id="chatCompor" class="hud" autocomplete="off">
+    <input type="file" id="chatArquivo" accept="image/*" multiple hidden>
+    <button type="button" class="redondo" id="chatAnexar" aria-label="Anexar imagem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-7 7"/></svg></button>
     <textarea id="chatTexto" rows="1" placeholder="Mensagem para esta sessão" enterkeyhint="send"></textarea>
     <button type="button" class="redondo" id="chatFalar" aria-label="Falar a mensagem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
     <button type="submit" class="redondo" id="chatEnviar" aria-label="Enviar" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
@@ -342,7 +355,7 @@
 
 <script>
 'use strict';
-const VERSAO = '2.4';
+const VERSAO = '2.5';
 const $ = s => document.querySelector(s);
 const guardar = (k, v) => { try { localStorage.setItem('atlas.' + k, JSON.stringify(v)); } catch (e) { } };
 const ler = (k, padrao) => { try { const v = localStorage.getItem('atlas.' + k); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; } };
@@ -367,9 +380,13 @@ async function prepararChaves(hex) {
 }
 const hmac = async (key, dados) => new Uint8Array(await crypto.subtle.sign('HMAC', key, dados));
 async function fluxo(nonce, n) {
-  const partes = []; let t = 0, i = 0;
-  while (t < n) { const ctr = new Uint8Array(4); new DataView(ctr.buffer).setUint32(0, i++); const b = await hmac(CH.ke, juntar(nonce, ctr)); partes.push(b); t += b.length; }
-  return juntar(...partes).slice(0, n);
+  const blocos = Math.ceil(n / 32), o = new Uint8Array(blocos * 32);   // pré-alocado: imagens geram milhares de blocos
+  for (let i0 = 0; i0 < blocos; i0 += 256) {                          // em lotes paralelos (rápido sem estourar a memória)
+    const lote = [];
+    for (let i = i0; i < Math.min(blocos, i0 + 256); i++) { const ctr = new Uint8Array(4); new DataView(ctr.buffer).setUint32(0, i); lote.push(hmac(CH.ke, juntar(nonce, ctr)).then(b => o.set(b, i * 32))); }
+    await Promise.all(lote);
+  }
+  return o.subarray(0, n);
 }
 function b64u(bytes) { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_'); }
 function deB64u(s) { s = s.trim().replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const r = atob(s), b = new Uint8Array(r.length); for (let i = 0; i < r.length; i++) b[i] = r.charCodeAt(i); return b; }
@@ -803,7 +820,7 @@ function md(t) {                                            // markdown leve das
     .replace(/^#{1,4}\s+(.+)$/gm, '<b>$1</b>')
     .replace(/^\s*[-*]\s+/gm, '• ');
 }
-function fecharChat() { CHAT = null; clearTimeout(chatTm); $('#chatSes').classList.add('oculto'); atualizarSessoes(false); }
+function fecharChat() { CHAT = null; ANEXOS.length = 0; desenharAnexos(); ajustarChatTexto();clearTimeout(chatTm); $('#chatSes').classList.add('oculto'); atualizarSessoes(false); }
 function marcarEstadoChat(e) { const el = $('#chatEstado'); el.textContent = ROT_SES[e] || e || ''; el.style.color = COR_SES[e] || ''; }
 async function carregarChat(manual) {
   if (!CHAT || chatCarregando) return;
@@ -837,7 +854,7 @@ function desenharChat(rolar) {
   for (const m of msgs) {
     if (m.de === 'acao') { h += `<div class="acao-n">◦ usou ${m.n} ferramenta${m.n > 1 ? 's' : ''}</div>`; continue; }
     const eu = m.de === 'eu';
-    h += `<div class="msg hud ${eu ? 'eu' : 'claude'}"><div class="quem"><span>${eu ? '▸ Senhor' + (m.via === 'atlas' ? ' · pelo app' : '') : '◂ Claude'}</span><time>${m.t ? hora(m.t) : ''}</time></div>${eu ? escapar(m.texto) : md(m.texto)}</div>`;
+    h += `<div class="msg hud ${eu ? 'eu' : 'claude'}"><div class="quem"><span>${eu ? '▸ Senhor' + (m.via === 'atlas' ? ' · pelo app' : '') : '◂ Claude'}</span><time>${m.t ? hora(m.t) : ''}</time></div>${eu ? escapar(m.texto) : md(m.texto)}${htmlImagens(m)}</div>`;
   }
   if (d.pendencia) h += `<div class="sessao sessao-pend hud" style="--cor:var(--err)">${blocoPendencia(d.pendencia)}</div>`;
   for (const n of (NOTAS[CHAT.id] || []).slice(-3)) h += `<div class="nota ${n.estado || ''}">${n.estado === 'pendente' ? '◌ ' : ''}${escapar(n.texto)}</div>`;
@@ -845,6 +862,7 @@ function desenharChat(rolar) {
   box.innerHTML = h;
   box.querySelectorAll('[data-resp]').forEach(x => x.onclick = () => responderSessao({ id: CHAT.id, titulo: CHAT.nome, pendencia: d.pendencia }, x.dataset.resp, x.dataset.op));
   $('#chatCompor').classList.toggle('oculto', !CHAT.pode);
+  carregarImagensChat(box);
   if (noFim) box.scrollTop = box.scrollHeight;
 }
 function notaSessao(m) {                                     // aviso do Atlas sobre uma sessão
@@ -869,16 +887,100 @@ function notaSessao(m) {                                     // aviso do Atlas s
   else if (m.fala && !m.pendente) { aviso(m.fala.slice(0, 160), 5000); vibrar([40, 60, 40]); if (telaAtual === 'sessoes') atualizarSessoes(false); }
 }
 async function enviarChat() {
-  const t = $('#chatTexto').value.trim(); if (!t || !CHAT || !CHAT.pode) return;
-  const sid = CHAT.id, id = novoId();
-  $('#chatTexto').value = ''; ajustarChatTexto();
-  (NOTAS[sid] = NOTAS[sid] || []).push({ id, texto: 'Mandando ao notebook…', estado: 'pendente', t: Date.now() / 1000 });
-  CHAT.dados = CHAT.dados || { msgs: [] }; (CHAT.dados.msgs = CHAT.dados.msgs || []).push({ de: 'eu', texto: t, t: Date.now() / 1000 });
+  const t = $('#chatTexto').value.trim(); if ((!t && !ANEXOS.length) || !CHAT || !CHAT.pode) return;
+  const sid = CHAT.id, id = novoId(), fotos = ANEXOS.splice(0);
+  if (fotos.length && !(await canalDiretoPronto())) {
+    ANEXOS.unshift(...fotos); desenharAnexos();
+    aviso('Imagens só vão pelo canal direto (Tailscale ligado no celular). O texto não foi enviado.', 4500); return;
+  }
+  $('#chatTexto').value = ''; desenharAnexos(); ajustarChatTexto();
+  const nota = { id, texto: fotos.length ? 'Enviando ' + (fotos.length > 1 ? fotos.length + ' imagens' : 'a imagem') + '…' : 'Mandando ao notebook…', estado: 'pendente', t: Date.now() / 1000 };
+  (NOTAS[sid] = NOTAS[sid] || []).push(nota);
+  CHAT.dados = CHAT.dados || { msgs: [] }; (CHAT.dados.msgs = CHAT.dados.msgs || []).push({ de: 'eu', texto: t, t: Date.now() / 1000, locais: fotos.map(f => f.url) });
   desenharChat(true);
-  try { await enviarAoAtlas(id, '__sessao__', { sessao: sid, pedido: t }); }
-  catch (e) { notaSessao({ id, sessao: sid, fala: 'Não consegui mandar. Confira a internet do celular.', ok: false }); }
+  try {
+    const imagens = [];
+    for (const f of fotos) {
+      const r = await postDireto('/img', { id: novoId(), t: Date.now() / 1000, b64: f.b64 }, 120000);
+      if (!r || !r.ok) throw new Error((r && r.erro) || 'imagem recusada');
+      imagens.push(r.caminho); MINI.set(r.caminho + '|640', f.url);
+    }
+    if (fotos.length) { nota.texto = 'Mandando ao notebook…'; desenharChat(false); }
+    await enviarAoAtlas(id, '__sessao__', Object.assign({ sessao: sid, pedido: t }, imagens.length ? { imagens } : {}));
+  } catch (e) { notaSessao({ id, sessao: sid, fala: fotos.length ? 'Não consegui enviar a imagem (' + e.message + ').' : 'Não consegui mandar. Confira a internet do celular.', ok: false }); }
 }
-function ajustarChatTexto() { const c = $('#chatTexto'); $('#chatEnviar').disabled = !c.value.trim(); c.style.height = 'auto'; c.style.height = Math.min(120, c.scrollHeight) + 'px'; }
+function ajustarChatTexto() { const c = $('#chatTexto'); $('#chatEnviar').disabled = !c.value.trim() && !ANEXOS.length; c.style.height = 'auto'; c.style.height = Math.min(120, c.scrollHeight) + 'px'; }
+
+// ── imagens no chat da sessão: vão e voltam só pelo canal direto, cifradas, na própria resposta HTTP ──
+var ANEXOS = [];                                             // fotos escolhidas e ainda não enviadas: {url, b64}
+var MINI = new Map();                                     // "caminho|lado" → object URL (só na memória)
+async function canalDiretoPronto() { if (canal !== 'direto') await escolherCanal(); return canal === 'direto' && !!baseDireta(); }
+async function postDireto(rota, obj, prazo = 30000) {
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), prazo);
+  try {
+    const r = await fetch(baseDireta() + rota, { method: 'POST', body: await cifrar(obj), signal: ac.signal, cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status === 413 ? 'grande demais' : 'notebook respondeu ' + r.status);
+    const m = await decifrar(await r.text()); if (!m) throw new Error('resposta ilegível'); return m;
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'demorou demais' : e.message); }
+  finally { clearTimeout(tm); }
+}
+async function reduzirFoto(arq) {                            // até 1600 px, JPEG 0,8: chega rápido e não pesa no notebook
+  const bmp = await createImageBitmap(arq).catch(() => null);
+  let img = bmp;
+  if (!img) { img = new Image(); img.src = URL.createObjectURL(arq); await img.decode(); }
+  const w = img.width, h = img.height, k = Math.min(1, 1600 / Math.max(w, h));
+  const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+  cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+  if (bmp) bmp.close();
+  const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.8));
+  const b = new Uint8Array(await blob.arrayBuffer()); let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return { url: URL.createObjectURL(blob), b64: btoa(s) };
+}
+function desenharAnexos() {
+  $('#chatAnexos').innerHTML = ANEXOS.map((a, i) => `<div class="anx" style="background-image:url(${a.url})"><button type="button" data-tira="${i}" aria-label="Tirar">✕</button></div>`).join('');
+  $('#chatAnexos').querySelectorAll('[data-tira]').forEach(b => b.onclick = () => { ANEXOS.splice(+b.dataset.tira, 1); desenharAnexos(); ajustarChatTexto(); });
+}
+$('#chatAnexar').onclick = async () => {
+  if (!(await canalDiretoPronto())) { aviso('Imagens só vão pelo canal direto: ligue o Tailscale no celular.', 4000); return; }
+  $('#chatArquivo').click();
+};
+$('#chatArquivo').onchange = async e => {
+  const arqs = Array.from(e.target.files || []).slice(0, Math.max(0, 6 - ANEXOS.length)); e.target.value = '';
+  for (const a of arqs) { try { ANEXOS.push(await reduzirFoto(a)); } catch (err) { aviso('Não consegui abrir essa imagem.'); } }
+  desenharAnexos(); ajustarChatTexto();
+};
+async function miniatura(cam, lado) {
+  const k = cam + '|' + lado; if (MINI.has(k)) return MINI.get(k);
+  if (!(await canalDiretoPronto())) return null;
+  const p = (async () => {
+    const r = await postDireto('/ver', { id: novoId(), t: Date.now() / 1000, caminho: cam, lado }, 60000);
+    if (!r.ok) throw new Error(r.erro || 'sem imagem');
+    return URL.createObjectURL(new Blob([deB64u(r.b64)], { type: r.tipo || 'image/jpeg' }));
+  })();
+  MINI.set(k, p); p.catch(() => setTimeout(() => MINI.delete(k), 60000));   // falhou: tenta de novo daqui a 1 min
+  return p;
+}
+function carregarImagensChat(box) {
+  box.querySelectorAll('img[data-cam]').forEach(async el => {
+    try { const u = await miniatura(el.dataset.cam, 640); if (u) { el.src = u; el.classList.remove('sem'); } else el.title = 'Só pelo canal direto'; }
+    catch (e) { el.title = e.message; el.alt = '✕'; }
+  });
+  box.querySelectorAll('.imgs img').forEach(el => el.onclick = () => abrirVisor(el.dataset.cam, el.src));
+}
+async function abrirVisor(cam, previa) {
+  const v = document.createElement('div'); v.id = 'visor';
+  v.innerHTML = `<img alt=""><div class="cap">${escapar(cam ? cam.split(/[\\/]/).pop() : '')}</div>`;
+  v.onclick = () => v.remove(); document.body.appendChild(v);
+  const im = v.querySelector('img'); if (previa) im.src = previa;
+  if (cam) try { const u = await miniatura(cam, 2000); if (u) im.src = u; } catch (e) { }
+}
+var ICONE_IMG ='data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#5f7d8c" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-7 7"/></svg>');
+function htmlImagens(m) {
+  const loc = (m.locais || []).map(u => `<img src="${u}" alt="">`);
+  const rem = (m.imgs || []).map(c => `<img class="sem" src="${ICONE_IMG}" data-cam="${escapar(c)}" alt="">`);
+  return loc.length || rem.length ? `<div class="imgs">${loc.join('')}${rem.join('')}</div>` : '';
+}
 $('#chatTexto').addEventListener('input', ajustarChatTexto);
 $('#chatTexto').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); enviarChat(); } });
 $('#chatCompor').onsubmit = e => { e.preventDefault(); enviarChat(); };
