@@ -460,6 +460,10 @@ async function chegou(linha) {
   }
   if (espera.has(m.id)) { const f = espera.get(m.id); espera.delete(m.id); f(m); return; }
   const alvo = MSGS.find(x => x.id === m.id && x.de === 'atlas');
+  if (!alvo && m.novo && m.fala) {                               // aviso novo (ex.: a sessão do Claude terminou)
+    MSGS.push({ id: m.id, de: 'atlas', texto: m.fala, t: Date.now() / 1000, estado: m.ok === false ? 'erro' : 'ok' });
+    vibrar([40, 60, 40]); falar(m.fala); salvarMsgs(); desenharConversa(); return;
+  }
   if (!alvo) return;                                             // resposta de outro aparelho / da Alexa
   if (m.pergunta) {
     Object.assign(alvo, { estado: 'pergunta', texto: m.fala, pergunta: true, sensivel: !!m.sensivel, detalhe: m.detalhe || '', respondida: false, t: Date.now() / 1000 });
@@ -681,15 +685,21 @@ function desenharSessoes() {
     d.innerHTML = `<i class="faixa"></i><h3><span>${escapar(nome)}</span><span class="tag">${escapar(ROT_SES[s.estado] || s.estado || '')}</span></h3>
       ${s.ultimo_pedido ? `<div class="linha-t"><em>VOCÊ ›</em> ${escapar(s.ultimo_pedido)}</div>` : ''}
       ${s.ultima_resposta ? `<div class="linha-t"><em>CLAUDE ›</em> ${escapar(s.ultima_resposta)}</div>` : ''}
-      ${s.pedido_atlas ? `<div class="pedido-atlas">Pedido do Atlas ${s.pedido_atlas.fase === 'esperando' ? 'esperando a sessão parar' : 'em andamento'}: ${escapar(s.pedido_atlas.pedido)}</div>` : ''}
+      ${s.pedido_atlas ? `<div class="pedido-atlas">${escapar(faseAtlas(s.pedido_atlas))}: ${escapar(s.pedido_atlas.pedido)}</div>` : ''}
       <div class="rodape"><span>${s.fonte === 'cowork' ? 'COWORK · ACOMPANHAMENTO' : 'CLAUDE CODE'}${quando ? ' · ' + quando.toUpperCase() : ''}</span>${s.pode_pedir ? '<button class="botao leve">Mandar pedido</button>' : ''}</div>`;
     const b = d.querySelector('.botao.leve'); if (b) b.onclick = () => abrirSessao(s);
     v.appendChild(d);
   }
 }
+function faseAtlas(p) {
+  const d = p.desde_s || 0, h = Math.floor(d / 3600), m = Math.floor(d % 3600 / 60), t = h ? h + ' h ' + m + ' min' : m + ' min';
+  return p.fase === 'esperando' ? 'Atlas esperando a sessão parar' : p.fase === 'enviando' || p.fase === 'digitando' ? 'Atlas digitando no Claude Desktop'
+    : p.fase === 'acompanhando' ? '◉ Atlas monitorando há ' + t : 'Pedido do Atlas em andamento';
+}
 function abrirSessao(s) {
   sessaoAlvo = s; $('#tSessao').textContent = 'Pedido para ' + (s.nome || 'a sessão');
-  $('#pSessao').textContent = s.estado === 'trabalhando' ? 'Ela está trabalhando agora: o Atlas manda o pedido assim que ela parar. A resposta aparece na conversa.' : 'O Atlas retoma esta sessão no notebook e manda o pedido. A resposta aparece na conversa.';
+  $('#pSessao').textContent = (s.estado === 'trabalhando' ? 'Ela está trabalhando agora: assim que parar, o' : 'O') +
+    ' Atlas abre esta sessão no Claude Desktop e digita o pedido lá (usa o mouse e o teclado por alguns segundos). Fica no histórico da sessão, e quando ela terminar o resultado aparece aqui.';
   $('#textoSessao').value = ''; abrirFolha('#folhaSessao'); setTimeout(() => $('#textoSessao').focus(), 320);
 }
 $('#btEnviarSessao').onclick = () => {
