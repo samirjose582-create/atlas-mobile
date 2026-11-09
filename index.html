@@ -701,7 +701,7 @@ function faseAtlas(p) {
 function abrirSessao(s) {
   sessaoAlvo = s; $('#tSessao').textContent = 'Pedido para ' + (s.nome || 'a sessão');
   $('#pSessao').textContent = (s.estado === 'trabalhando' ? 'Ela está trabalhando agora: assim que parar, o' : 'O') +
-    ' Atlas abre esta sessão no Claude Desktop e digita o pedido lá (usa o mouse e o teclado por alguns segundos). Fica no histórico da sessão, e quando ela terminar o resultado aparece aqui.';
+    ' Atlas manda o pedido como mensagem para esta sessão aberta no Claude Desktop: fica no histórico dela, sem usar mouse nem teclado. Ele monitora a sessão e, quando ela terminar, o resultado aparece aqui.';
   $('#textoSessao').value = ''; abrirFolha('#folhaSessao'); setTimeout(() => $('#textoSessao').focus(), 320);
 }
 $('#btEnviarSessao').onclick = () => {
