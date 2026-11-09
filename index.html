@@ -78,6 +78,7 @@
   .tel{padding:7px 8px 6px;min-height:50px}
   .tel .rot{font-size:9.5px;letter-spacing:.18em;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .tel b{display:block;font-family:var(--c);font-weight:600;font-size:18px;line-height:1.15;color:var(--branco);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .tel.longo b{font-size:13.5px;line-height:1.55;letter-spacing:.02em}
   .tel.ok b{color:var(--ok)} .tel.alerta b{color:var(--err)} .tel.vivo b{color:var(--amb)}
 
   /* telas */
@@ -360,6 +361,7 @@ function escapar(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, c => 
 
 // ═════════════ canal (ntfy) ═════════════
 let leitor = null, abortar = null, reconectar = null, falhas = 0;
+const pedacos = new Map();
 async function publicar(obj) {
   const r = await fetch(PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-c', { method: 'POST', body: await cifrar(obj) });
   if (!r.ok) throw new Error('canal ' + r.status);
@@ -390,7 +392,15 @@ async function chegou(linha) {
   let ev; try { ev = JSON.parse(linha); } catch (e) { return; }
   if (ev.event !== 'message') return;
   ultimoId = ev.id; guardar('ultimoId', ultimoId);
-  const m = await decifrar(ev.message || ''); if (!m || !m.id) return;
+  let m = await decifrar(ev.message || ''); if (!m || !m.id) return;
+  if (m.pedaco != null) {                                        // resposta grande (ex.: lista de sessões) chega em pedaços
+    const b = pedacos.get(m.id) || { n: m.total, partes: [], t: Date.now() };
+    b.partes[m.parte] = m.pedaco; pedacos.set(m.id, b);
+    for (const [k, v] of pedacos) if (Date.now() - v.t > 120000) pedacos.delete(k);
+    if (b.partes.filter(x => x != null).length < b.n) return;
+    pedacos.delete(m.id);
+    try { m = JSON.parse(dec.decode(deB64u(b.partes.join('')))); } catch (e) { return; }
+  }
   if (espera.has(m.id)) { const f = espera.get(m.id); espera.delete(m.id); f(m); return; }
   const alvo = MSGS.find(x => x.id === m.id && x.de === 'atlas');
   if (!alvo) return;                                             // resposta de outro aparelho / da Alexa
@@ -502,14 +512,19 @@ function marcarOnline(v) {
   if (!v && estadoAtual === 'ocioso') estadoOrbe('offline'); else if (v && estadoAtual === 'offline') estadoOrbe('ocioso');
 }
 const faseBuild = b => !b || !b.fase ? null : b.fase === 'ok' ? 'ok' : b.fase === 'erro' ? 'erro' : 'vivo';
-function txtBuild(b) { return !b || !b.fase ? '—' : b.fase === 'ok' ? 'OK' : b.fase === 'erro' ? (b.erros || '') + ' ERRO' + (b.erros === 1 ? '' : 'S') : (b.rotulo || 'compilando').toUpperCase(); }
+function txtBuild(b, curto) {
+  if (!b || !b.fase) return '—'; if (b.fase === 'ok') return 'OK';
+  if (b.fase === 'erro') return (b.erros || '') + ' ERRO' + (b.erros === 1 ? '' : 'S');
+  const r = (b.rotulo || 'compilando').toUpperCase();
+  return !curto ? r : /AGUARD|ESPER|FILA/.test(r) ? 'NA FILA' : /COMPIL|BUILD|RODAND/.test(r) ? 'RODANDO' : r.split(/\s+/)[0].slice(0, 7);
+}
 function pomoAtivo() { const p = STATUS && STATUS.rotina && STATUS.rotina.pomodoro; return p && p.fase && p.fase !== 'parado' ? p : null; }
 function restantePomo(p) { return p.restante_s - (p.pausado ? 0 : (Date.now() - tStatus) / 1000); }
-function tile(rot, valor, cls) { return `<div class="tel hud ${cls || ''}"><span class="rot">${escapar(rot)}</span><b>${escapar(valor)}</b></div>`; }
+function tile(rot, valor, cls) { return `<div class="tel hud ${cls || ''}${String(valor).length > 5 ? ' longo' : ''}"><span class="rot">${escapar(rot)}</span><b>${escapar(valor)}</b></div>`; }
 function desenharTelemetria() {
   const s = STATUS || {}, r = s.rotina || {}, t = r.tarefas || {}, hw = s.hw || {}, cl = s.clima || {}, p = pomoAtivo(), fb = faseBuild(s.build);
   $('#telemetria').innerHTML =
-    tile('Build', txtBuild(s.build), fb === 'ok' ? 'ok' : fb === 'erro' ? 'alerta' : fb ? 'vivo' : '') +
+    tile('Build', txtBuild(s.build, true), fb === 'ok' ? 'ok' : fb === 'erro' ? 'alerta' : fb ? 'vivo' : '') +
     (p ? tile(p.fase === 'foco' ? 'Foco' : 'Pausa', fmtMin(restantePomo(p)), 'vivo') : tile('Tarefas', t.total ? t.feitas + '/' + t.total : '—')) +
     tile(hw.cpu_temp != null ? 'CPU °C' : 'CPU', hw.cpu_temp != null ? Math.round(hw.cpu_temp) + '°' : s.cpu != null ? Math.round(s.cpu) + '%' : '—', hw.cpu_temp >= 90 ? 'alerta' : '') +
     tile(cl.cidade ? cl.cidade.split(/[·,]/)[0].trim() : 'Clima', cl.temp != null ? Math.round(cl.temp) + '°' : '—');
