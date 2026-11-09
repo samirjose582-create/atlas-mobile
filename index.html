@@ -155,6 +155,27 @@
   .sessao .rodape{display:flex;align-items:center;justify-content:space-between;margin-top:9px;gap:10px}
   .sessao .rodape span{flex:1;min-width:0;font-family:var(--c);font-size:11px;letter-spacing:.1em;color:var(--apag)}
   .sessao .rodape .botao{white-space:nowrap;flex:none}
+  .sessao{cursor:pointer}
+  /* chat de UMA sessão (como no Claude Desktop) */
+  #chatSes{position:fixed;inset:0;z-index:12;display:flex;flex-direction:column;background:rgba(1,6,11,.97);padding:max(var(--sa-t),10px) 0 calc(6px + var(--sa-b))}
+  #chatSes .chat-topo{display:flex;align-items:center;gap:6px;padding:2px 6px 8px;border-bottom:1px solid var(--linha)}
+  #chatSes .chat-nome{flex:1;min-width:0}
+  #chatSes .chat-nome b{display:block;font-weight:600;font-size:16.5px;color:var(--branco);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #chatSes .chat-nome .rot{font-size:11px}
+  #chatLista{flex:1;min-height:0;display:flex;flex-direction:column;gap:9px;padding-top:10px}
+  #chatLista .msg.claude .quem{color:var(--mut)}
+  #chatLista .acao-n{align-self:flex-start;font-family:var(--c);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--apag);padding:0 4px}
+  #chatLista .nota{align-self:center;max-width:94%;text-align:center;font-size:13px;color:var(--amb);padding:2px 6px}
+  #chatLista .nota.erro{color:var(--err)} #chatLista .nota.ok{color:var(--ok)}
+  #chatLista .sessao-pend{align-self:stretch}
+  #chatLista code{font-family:var(--c);font-size:.92em;color:var(--pri);background:rgba(25,227,255,.08);padding:0 3px}
+  #chatLista pre.cod{white-space:pre-wrap;font-family:var(--c);font-size:13px;color:var(--txt);background:rgba(0,0,0,.35);border:1px solid var(--linha);padding:7px 9px;margin:4px 0}
+  #chatLista u{text-decoration:none;color:var(--pri)}
+  #chatCompor{display:flex;align-items:flex-end;gap:7px;margin:6px 12px 0;padding:5px 5px 5px 12px}
+  #chatTexto{flex:1;resize:none;max-height:120px;min-height:38px;padding:8px 6px;border:0;background:transparent;color:var(--branco);font:inherit;font-size:16px;line-height:1.35}
+  #chatTexto:focus{outline:none}
+  #chatEnviar{background:var(--pri);color:#02161D;border-color:var(--pri)}
+  #chatEnviar:disabled{background:var(--painel2);color:var(--apag);border-color:var(--linha)}
   .info{color:var(--mut);font-size:14.5px;padding:18px 2px}
   .info.erro{color:var(--err)}
 
@@ -270,6 +291,19 @@
   </nav>
 </div>
 
+<section id="chatSes" class="oculto" role="dialog" aria-labelledby="chatNome">
+  <header class="chat-topo">
+    <button class="icone" id="chatVoltar" aria-label="Voltar às sessões"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="chat-nome"><b id="chatNome">Sessão</b><span class="rot" id="chatEstado"></span></div>
+    <button class="icone" id="chatAtual" aria-label="Atualizar a conversa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+  </header>
+  <div id="chatLista" class="tela"></div>
+  <form id="chatCompor" class="hud" autocomplete="off">
+    <textarea id="chatTexto" rows="1" placeholder="Mensagem para esta sessão" enterkeyhint="send"></textarea>
+    <button type="submit" class="redondo" id="chatEnviar" aria-label="Enviar" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+  </form>
+</section>
+
 <div id="faixaNova" class="hud oculto" role="status"><div><b>NOVA VERSÃO DO APP</b><span class="q"></span></div><button class="botao">Atualizar</button></div>
 <div id="veu"></div>
 
@@ -307,7 +341,7 @@
 
 <script>
 'use strict';
-const VERSAO = '2.1';
+const VERSAO = '2.2';
 const $ = s => document.querySelector(s);
 const guardar = (k, v) => { try { localStorage.setItem('atlas.' + k, JSON.stringify(v)); } catch (e) { } };
 const ler = (k, padrao) => { try { const v = localStorage.getItem('atlas.' + k); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; } };
@@ -468,6 +502,7 @@ async function chegou(linha) {
     } catch (e) { return; }
   }
   if (espera.has(m.id)) { const f = espera.get(m.id); espera.delete(m.id); f(m); return; }
+  if (m.sessao && !MSGS.some(x => x.id === m.id && x.de === 'atlas')) { notaSessao(m); return; }   // vai para o chat da sessão
   const alvo = MSGS.find(x => x.id === m.id && x.de === 'atlas');
   if (!alvo && m.novo && m.fala) {                               // aviso novo (ex.: a sessão do Claude terminou)
     MSGS.push({ id: m.id, de: 'atlas', texto: m.fala, t: Date.now() / 1000, estado: m.ok === false ? 'erro' : 'ok' });
@@ -698,9 +733,9 @@ function desenharSessoes() {
       ${s.ultima_resposta ? `<div class="linha-t"><em>CLAUDE ›</em> ${escapar(s.ultima_resposta)}</div>` : ''}
       ${s.pedido_atlas ? `<div class="pedido-atlas">${escapar(faseAtlas(s.pedido_atlas))}: ${escapar(s.pedido_atlas.pedido)}</div>` : ''}
       ${s.pendencia ? blocoPendencia(s.pendencia) : ''}
-      <div class="rodape"><span>${s.fonte === 'cowork' ? 'COWORK · ACOMPANHAMENTO' : escapar(ondeAberta(s))}${quando ? ' · ' + quando.toUpperCase() : ''}</span>${s.pode_pedir ? '<button class="botao leve">Mandar pedido</button>' : ''}</div>`;
-    const b = d.querySelector('.botao.leve'); if (b) b.onclick = () => abrirSessao(s);
-    d.querySelectorAll('[data-resp]').forEach(x => x.onclick = () => responderSessao(s, x.dataset.resp, x.dataset.op));
+      <div class="rodape"><span>${s.fonte === 'cowork' ? 'COWORK · ACOMPANHAMENTO' : escapar(ondeAberta(s))}${quando ? ' · ' + quando.toUpperCase() : ''}</span>${s.pode_pedir ? '<button class="botao leve">Abrir conversa</button>' : ''}</div>`;
+    d.onclick = e => { if (!e.target.closest('[data-resp]')) abrirChat(s); };       // toque no card: o chat da sessão
+    d.querySelectorAll('[data-resp]').forEach(x => x.onclick = e => { e.stopPropagation(); responderSessao(s, x.dataset.resp, x.dataset.op); });
     v.appendChild(d);
   }
 }
@@ -720,12 +755,109 @@ function blocoPendencia(p) {
 }
 function responderSessao(s, decisao, opcao) {
   const p = s.pendencia || {};
-  if (decisao === 'permitir' && !confirm('Permitir na sessão ' + (s.nome || '') + '?\n\n' + (p.falar || '') + (p.detalhe ? '\n' + p.detalhe : ''))) return;
-  const rot = decisao === 'permitir' ? 'Permitir' : decisao === 'negar' ? 'Negar' : opcao;
-  trocarTela('conversa');
-  perguntar(rot + ' · ' + (p.falar || p.ferramenta || ''), { texto: '__sessao_resp__', sessao: s.id, tool_id: p.id, decisao, opcao }, s.nome);
-  s.pendencia = null; setTimeout(() => atualizarSessoes(false), 5000);
+  if (decisao === 'permitir' && !confirm('Permitir na sessão ' + (s.titulo || s.nome || '') + '?\n\n' + (p.falar || '') + (p.detalhe ? '\n' + p.detalhe : ''))) return;
+  const rot = decisao === 'permitir' ? 'Permitindo' : decisao === 'negar' ? 'Negando' : opcao;
+  if (!CHAT || CHAT.id !== s.id) abrirChat(s);              // a resposta aparece no chat da própria sessão
+  const id = novoId();
+  (NOTAS[s.id] = NOTAS[s.id] || []).push({ id, texto: rot + ': ' + (p.falar || p.ferramenta || '') + '…', estado: 'pendente', t: Date.now() / 1000 });
+  s.pendencia = null; if (CHAT && CHAT.dados) CHAT.dados.pendencia = null; desenharChat(true);
+  enviarAoAtlas(id, '__sessao_resp__', { sessao: s.id, tool_id: p.id, decisao, opcao: opcao || null })
+    .catch(() => notaSessao({ id, sessao: s.id, fala: 'Não consegui mandar. Confira a internet do celular.', ok: false }));
 }
+
+// ═════════════ chat de UMA sessão (como no Claude Desktop) ═════════════
+// Cada sessão tem a própria conversa: o histórico vem do notebook (o .jsonl dela) e os pedidos vão direto para a caixa
+// de mensagem dela no Claude Desktop. Os avisos do Atlas sobre a sessão ficam aqui, não na conversa geral.
+let CHAT = null, chatTm = null, chatCarregando = false;
+const NOTAS = {};                                            // sessão → avisos do Atlas (entregue, terminou, permissão…)
+function abrirChat(s) {
+  clearTimeout(chatTm);
+  CHAT = { id: s.id, nome: s.titulo || s.nome || 'sessão', estado: s.estado, pode: s.pode_pedir !== false && s.fonte !== 'cowork', dados: ler('hist.' + s.id, null) };
+  if (CHAT.dados && s.pendencia) CHAT.dados.pendencia = s.pendencia;
+  $('#chatNome').textContent = CHAT.nome; marcarEstadoChat(s.estado);
+  $('#chatSes').classList.remove('oculto'); desenharChat(true); carregarChat(false);
+}
+function md(t) {                                            // markdown leve das respostas do Claude (negrito, código, links, títulos)
+  return escapar(t)
+    .replace(/```[\w-]*\n?([\s\S]*?)```/g, (_, c) => `<pre class="cod">${c.replace(/\n$/, '')}</pre>`)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, '<u>$1</u>')
+    .replace(/^#{1,4}\s+(.+)$/gm, '<b>$1</b>')
+    .replace(/^\s*[-*]\s+/gm, '• ');
+}
+function fecharChat() { CHAT = null; clearTimeout(chatTm); $('#chatSes').classList.add('oculto'); atualizarSessoes(false); }
+function marcarEstadoChat(e) { const el = $('#chatEstado'); el.textContent = ROT_SES[e] || e || ''; el.style.color = COR_SES[e] || ''; }
+async function carregarChat(manual) {
+  if (!CHAT || chatCarregando) return;
+  const sid = CHAT.id; chatCarregando = true; clearTimeout(chatTm); $('#chatAtual').classList.add('girando');
+  try {
+    const m = await pedirInterno('__sessao_hist__', Object.assign({ sessao: sid }, 'DecompressionStream' in window ? { z: 1 } : {}), 30000);
+    if (CHAT && CHAT.id === sid) {
+      if (m.erro) aviso(m.erro);
+      else {
+        CHAT.dados = m; guardar('hist.' + sid, m); CHAT.estado = m.estado; marcarEstadoChat(m.estado);
+        if (m.titulo) $('#chatNome').textContent = CHAT.nome = m.titulo;
+        if (m.pode_pedir === false) CHAT.pode = false;
+        desenharChat(false);
+      }
+    }
+    marcarOnline(true);
+  } catch (e) { if (manual) aviso('O notebook não respondeu.'); }
+  chatCarregando = false; $('#chatAtual').classList.remove('girando');
+  if (CHAT && CHAT.id === sid) {                             // atualiza sozinho: rápido no canal direto; pelo ntfy, pouco (cota)
+    const ativa = ['trabalhando', 'aprovacao'].includes(CHAT.estado) || (NOTAS[sid] || []).some(n => n.estado === 'pendente');
+    const ms = canal === 'direto' ? (ativa ? 4000 : 15000) : (ativa ? 30000 : 0);
+    if (ms) chatTm = setTimeout(() => carregarChat(false), ms);
+  }
+}
+function desenharChat(rolar) {
+  const box = $('#chatLista'); if (!CHAT) return;
+  const noFim = rolar || box.scrollHeight - box.scrollTop - box.clientHeight < 140;
+  const d = CHAT.dados || {}, msgs = d.msgs || [];
+  let h = '';
+  if (!msgs.length) h += `<div class="info">${CHAT.dados ? 'Ainda não há mensagens nesta sessão.' : 'Lendo a conversa no notebook…'}</div>`;
+  for (const m of msgs) {
+    if (m.de === 'acao') { h += `<div class="acao-n">◦ usou ${m.n} ferramenta${m.n > 1 ? 's' : ''}</div>`; continue; }
+    const eu = m.de === 'eu';
+    h += `<div class="msg hud ${eu ? 'eu' : 'claude'}"><div class="quem"><span>${eu ? '▸ Senhor' : '◂ Claude'}</span><time>${m.t ? hora(m.t) : ''}</time></div>${eu ? escapar(m.texto) : md(m.texto)}</div>`;
+  }
+  if (d.pendencia) h += `<div class="sessao sessao-pend hud" style="--cor:var(--err)">${blocoPendencia(d.pendencia)}</div>`;
+  for (const n of (NOTAS[CHAT.id] || []).slice(-3)) h += `<div class="nota ${n.estado || ''}">${n.estado === 'pendente' ? '◌ ' : ''}${escapar(n.texto)}</div>`;
+  if (!CHAT.pode) h += `<div class="info">Sessão do Cowork: por aqui só dá para acompanhar.</div>`;
+  box.innerHTML = h;
+  box.querySelectorAll('[data-resp]').forEach(x => x.onclick = () => responderSessao({ id: CHAT.id, titulo: CHAT.nome, pendencia: d.pendencia }, x.dataset.resp, x.dataset.op));
+  $('#chatCompor').classList.toggle('oculto', !CHAT.pode);
+  if (noFim) box.scrollTop = box.scrollHeight;
+}
+function notaSessao(m) {                                     // aviso do Atlas sobre uma sessão
+  const sid = m.sessao, base = String(m.id).split(':')[0], lista = NOTAS[sid] = NOTAS[sid] || [];
+  if (m.pendente && !m.fala) { if (!lista.some(n => n.id === base)) lista.push({ id: base, texto: 'Mandando ao notebook…', estado: 'pendente', t: Date.now() / 1000 }); }
+  else if (m.fala) {
+    const n = lista.find(x => x.id === m.id) || lista.find(x => x.id === base && x.estado === 'pendente');
+    const est = m.pendente ? 'pendente' : m.ok === false ? 'erro' : 'ok';
+    if (n) Object.assign(n, { id: m.id, texto: m.fala, estado: est }); else lista.push({ id: m.id, texto: m.fala, estado: est, t: Date.now() / 1000 });
+    if (lista.length > 8) lista.splice(0, lista.length - 8);
+  }
+  if (CHAT && CHAT.id === sid) { desenharChat(false); if (m.fala && !m.pendente) setTimeout(() => carregarChat(false), 1500); }
+  else if (m.fala && !m.pendente) { aviso(m.fala.slice(0, 160), 5000); vibrar([40, 60, 40]); if (telaAtual === 'sessoes') atualizarSessoes(false); }
+}
+async function enviarChat() {
+  const t = $('#chatTexto').value.trim(); if (!t || !CHAT || !CHAT.pode) return;
+  const sid = CHAT.id, id = novoId();
+  $('#chatTexto').value = ''; ajustarChatTexto();
+  (NOTAS[sid] = NOTAS[sid] || []).push({ id, texto: 'Mandando ao notebook…', estado: 'pendente', t: Date.now() / 1000 });
+  CHAT.dados = CHAT.dados || { msgs: [] }; (CHAT.dados.msgs = CHAT.dados.msgs || []).push({ de: 'eu', texto: t, t: Date.now() / 1000 });
+  desenharChat(true);
+  try { await enviarAoAtlas(id, '__sessao__', { sessao: sid, pedido: t }); }
+  catch (e) { notaSessao({ id, sessao: sid, fala: 'Não consegui mandar. Confira a internet do celular.', ok: false }); }
+}
+function ajustarChatTexto() { const c = $('#chatTexto'); $('#chatEnviar').disabled = !c.value.trim(); c.style.height = 'auto'; c.style.height = Math.min(120, c.scrollHeight) + 'px'; }
+$('#chatTexto').addEventListener('input', ajustarChatTexto);
+$('#chatTexto').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); enviarChat(); } });
+$('#chatCompor').onsubmit = e => { e.preventDefault(); enviarChat(); };
+$('#chatVoltar').onclick = fecharChat;
+$('#chatAtual').onclick = () => carregarChat(true);
 function faseAtlas(p) {
   const d = p.desde_s || 0, h = Math.floor(d / 3600), m = Math.floor(d % 3600 / 60), t = h ? h + ' h ' + m + ' min' : m + ' min';
   return p.fase === 'esperando' ? 'Atlas esperando a sessão parar' : p.fase === 'enviando' || p.fase === 'digitando' ? 'Atlas digitando no Claude Desktop'

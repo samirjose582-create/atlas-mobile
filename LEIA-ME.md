@@ -32,6 +32,13 @@ Sem o Tailscale ligado, o app usa o ntfy como reserva, sozinho.
 2. No iPhone, abra o Atlas pelo ícone da Tela de Início → Ajustes → Notificações → Permitir.
 Avisa só com o app fechado: resposta que demorou, confirmação pedida, sessão do Claude que terminou ou pediu permissão.
 
+## Chat por sessão (como no Claude Desktop)
+Na aba **Sessões**, toque numa sessão: abre a conversa SÓ dela, com o histórico (seus pedidos e as respostas do Claude, lidos
+do notebook) e uma caixa para escrever. O que você manda vai direto para a caixa de mensagem dessa sessão no Claude Desktop
+(o Atlas abre a sessão pelo título exato, confere o cabeçalho, cola e envia; se ela estiver trabalhando, entra na fila).
+Os avisos do Atlas sobre a sessão (entregue, terminou, pediu permissão) ficam dentro desse chat, não na conversa geral.
+Com o canal direto (Tailscale) a conversa se atualiza sozinha; pelo ntfy, toque em ⟳ (para não gastar a cota).
+
 ## Responder permissões das sessões do Claude Desktop
 Quando uma sessão pede permissão, a aba **Sessões** mostra o card em vermelho com **QUER ›** (o que ela quer fazer, lido do
 histórico da sessão) e os botões **Permitir / Negar**. Perguntas com opções aparecem só para leitura (responda no notebook).
