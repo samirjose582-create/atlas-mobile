@@ -143,6 +143,7 @@
   .sessao h3 span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sessao h3 .tag{color:var(--cor);flex:none;margin-top:1px}
   .sessao .linha-t{margin-top:6px;font-size:14px;color:var(--mut);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .sessao .linha-t.origem{color:var(--txt);-webkit-line-clamp:2}
   .sessao .linha-t em{font-style:normal;color:var(--txt);font-family:var(--c);letter-spacing:.08em}
   .sessao .pedido-atlas{margin-top:7px;font-size:13.5px;color:var(--amb)}
   .sessao .rodape{display:flex;align-items:center;justify-content:space-between;margin-top:9px;gap:10px}
@@ -685,13 +686,20 @@ function desenharSessoes() {
     const quando = s.idade_s != null ? haQuanto(Date.now() / 1000 - s.idade_s) : '';
     const nome = (s.nome || 'sessão').replace(/^Cowork\s*[·:-]\s*/, '');
     d.innerHTML = `<i class="faixa"></i><h3><span>${escapar(nome)}</span><span class="tag">${escapar(ROT_SES[s.estado] || s.estado || '')}</span></h3>
+      ${s.primeiro_pedido ? `<div class="linha-t origem"><em>COMEÇOU COM ›</em> “${escapar(s.primeiro_pedido)}”</div>` : ''}
       ${s.ultimo_pedido ? `<div class="linha-t"><em>VOCÊ ›</em> ${escapar(s.ultimo_pedido)}</div>` : ''}
       ${s.ultima_resposta ? `<div class="linha-t"><em>CLAUDE ›</em> ${escapar(s.ultima_resposta)}</div>` : ''}
       ${s.pedido_atlas ? `<div class="pedido-atlas">${escapar(faseAtlas(s.pedido_atlas))}: ${escapar(s.pedido_atlas.pedido)}</div>` : ''}
-      <div class="rodape"><span>${s.fonte === 'cowork' ? 'COWORK · ACOMPANHAMENTO' : 'CLAUDE CODE'}${quando ? ' · ' + quando.toUpperCase() : ''}</span>${s.pode_pedir ? '<button class="botao leve">Mandar pedido</button>' : ''}</div>`;
+      <div class="rodape"><span>${s.fonte === 'cowork' ? 'COWORK · ACOMPANHAMENTO' : escapar(ondeAberta(s))}${quando ? ' · ' + quando.toUpperCase() : ''}</span>${s.pode_pedir ? '<button class="botao leve">Mandar pedido</button>' : ''}</div>`;
     const b = d.querySelector('.botao.leve'); if (b) b.onclick = () => abrirSessao(s);
     v.appendChild(d);
   }
+}
+const ONDE = { 'claude-desktop': 'CLAUDE DESKTOP', 'desktop': 'CLAUDE DESKTOP', 'local-agent': 'CLAUDE DESKTOP', cli: 'TERMINAL', 'claude-vscode': 'VS CODE', vscode: 'VS CODE', 'sdk-cli': 'AUTOMAÇÃO', 'sdk-py': 'AUTOMAÇÃO', 'sdk-ts': 'AUTOMAÇÃO' };
+function ondeAberta(s) {
+  const e = (s.aberta_em || '').toLowerCase(), onde = ONDE[e] || (e ? 'CLAUDE CODE (' + e.toUpperCase() + ')' : 'CLAUDE CODE');
+  const desde = s.criada ? ' · ABERTA ' + new Date(s.criada * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+  return onde + desde;
 }
 function faseAtlas(p) {
   const d = p.desde_s || 0, h = Math.floor(d / 3600), m = Math.floor(d % 3600 / 60), t = h ? h + ' h ' + m + ' min' : m + ' min';
