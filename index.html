@@ -363,8 +363,15 @@ function escapar(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, c => 
 let leitor = null, abortar = null, reconectar = null, falhas = 0;
 const pedacos = new Map();
 async function publicar(obj) {
-  const r = await fetch(PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-c', { method: 'POST', body: await cifrar(obj) });
-  if (!r.ok) throw new Error('canal ' + r.status);
+  const corpo = await cifrar(obj);
+  for (let tentativa = 0; ; tentativa++) {             // o ntfy.sh limita requisições por IP: se pedir calma, espera e tenta de novo
+    const r = await fetch(PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-c', { method: 'POST', body: corpo });
+    if (r.ok) return;
+    if (r.status !== 429 || tentativa >= 1) throw new Error('canal ' + r.status);
+    const ra = Math.min(20, parseFloat(r.headers.get('Retry-After')) || 6);
+    aviso('Canal ocupado; tentando de novo em ' + Math.round(ra) + ' s…', ra * 1000);
+    await new Promise(ok => setTimeout(ok, ra * 1000 + 300));
+  }
 }
 async function enviarAoAtlas(id, texto, extra = {}) {
   await publicar(Object.assign({ id, t: Date.now() / 1000, texto, origem: 'mobile' }, extra));
@@ -374,9 +381,10 @@ function ouvir() {
   abortar = new AbortController();
   const desde = ultimoId || '10m';
   const url = PAR.s.replace(/\/$/, '') + '/' + PAR.t + '-r/json?since=' + encodeURIComponent(desde);
+  const inicio = Date.now();
   fetch(url, { signal: abortar.signal, cache: 'no-store' }).then(async r => {
     if (!r.ok || !r.body) throw new Error('canal ' + r.status);
-    falhas = 0; leitor = r.body.getReader(); let resto = '';
+    leitor = r.body.getReader(); let resto = '';
     for (;;) {
       const { value, done } = await leitor.read(); if (done) break;
       resto += dec.decode(value, { stream: true });
@@ -385,7 +393,8 @@ function ouvir() {
     throw new Error('fim');
   }).catch(e => {
     if (e.name === 'AbortError') return;
-    falhas++; clearTimeout(reconectar); reconectar = setTimeout(ouvir, Math.min(30000, 1000 * 2 ** Math.min(falhas, 5)));
+    falhas = Date.now() - inicio > 60000 ? 0 : falhas + 1;        // caiu logo: espera mais (não gasta a cota do ntfy)
+    clearTimeout(reconectar); reconectar = setTimeout(ouvir, Math.min(60000, 3000 * 2 ** Math.min(falhas, 4)));
   });
 }
 async function chegou(linha) {
@@ -400,6 +409,12 @@ async function chegou(linha) {
     if (b.partes.filter(x => x != null).length < b.n) return;
     pedacos.delete(m.id);
     try { m = JSON.parse(dec.decode(deB64u(b.partes.join('')))); } catch (e) { return; }
+  }
+  if (m.z) {                                                     // lista comprimida pelo notebook
+    try {
+      const fluxoZ = new Blob([deB64u(m.z)]).stream().pipeThrough(new DecompressionStream('deflate'));
+      m = Object.assign({ id: m.id }, JSON.parse(await new Response(fluxoZ).text()));
+    } catch (e) { return; }
   }
   if (espera.has(m.id)) { const f = espera.get(m.id); espera.delete(m.id); f(m); return; }
   const alvo = MSGS.find(x => x.id === m.id && x.de === 'atlas');
@@ -498,11 +513,14 @@ function compactar() { $('#app').classList.toggle('compacto', MSGS.length > 0 ||
 // ═════════════ telemetria e painel ═════════════
 const CLIMA = { 0: 'céu limpo', 1: 'quase limpo', 2: 'parcialmente nublado', 3: 'nublado', 45: 'neblina', 48: 'neblina', 51: 'garoa', 53: 'garoa', 55: 'garoa forte', 61: 'chuva fraca', 63: 'chuva', 65: 'chuva forte', 80: 'pancadas', 81: 'pancadas', 82: 'pancadas fortes', 95: 'trovoadas' };
 function fmtMin(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+let statusEmCurso = false, tTentStatus = 0;
 async function atualizarStatus() {
+  if (statusEmCurso) return; statusEmCurso = true; tTentStatus = Date.now();
   try {
     const m = await pedirInterno('__status__', null, 9000);
     STATUS = m.status; tStatus = Date.now(); guardar('status', STATUS); marcarOnline(true);
   } catch (e) { marcarOnline(false); }
+  statusEmCurso = false;
   desenharTelemetria(); if (telaAtual === 'painel') desenharPainel();
 }
 function marcarOnline(v) {
@@ -586,7 +604,7 @@ async function atualizarSessoes(mostrarErro) {
   if (sesFase === 'carregando') return;
   sesFase = 'carregando'; sesErro = ''; if (telaAtual === 'sessoes') desenharSessoes();
   try {
-    const m = await pedirInterno('__sessoes__', null, 12000);
+    const m = await pedirInterno('__sessoes__', 'DecompressionStream' in window ? { z: 1 } : null, 30000);
     if (m.erro) { sesFase = 'erro'; sesErro = 'O Atlas não conseguiu ler as sessões: ' + m.erro; }
     else { SESSOES = m.sessoes || []; tSessoes = Date.now() / 1000; guardar('sessoes', SESSOES); guardar('tSessoes', tSessoes); sesFase = 'ok'; }
     marcarOnline(true);
@@ -648,8 +666,8 @@ function trocarTela(nome) {
   for (const t of ['conversa', 'sessoes', 'painel']) $('#v-' + t).classList.toggle('oculto', t !== nome);
   $('#compor').classList.toggle('oculto', nome !== 'conversa');
   compactar();
-  if (nome === 'sessoes') { desenharSessoes(); atualizarSessoes(false); }
-  if (nome === 'painel') { desenharPainel(); atualizarStatus(); }
+  if (nome === 'sessoes') { desenharSessoes(); if (Date.now() / 1000 - tSessoes > 45) atualizarSessoes(false); }
+  if (nome === 'painel') { desenharPainel(); if (Date.now() - tTentStatus > 20000) atualizarStatus(); }
   if (nome === 'conversa') desenharConversa();
 }
 document.querySelectorAll('.aba').forEach(a => a.onclick = () => trocarTela(a.dataset.tela));
@@ -1117,12 +1135,12 @@ async function iniciar() {
   $('#parear').classList.add('oculto'); $('#app').classList.remove('oculto');
   for (const m of MSGS) if (m.de === 'atlas' && m.estado === 'enviando') m.estado = 'pendente';
   estadoOrbe('ocioso'); desenharConversa(); desenharTelemetria(); compactar(); ouvir(); atualizarStatus(); atualizarSessoes(false);
-  setInterval(() => { if (!document.hidden) atualizarStatus(); }, 30000);
-  setInterval(() => { if (!document.hidden && telaAtual === 'sessoes') atualizarSessoes(false); }, 20000);
+  // o canal gratuito (ntfy.sh) limita as mensagens por IP: atualizações automáticas só de vez em quando
+  setInterval(() => { if (!document.hidden && Date.now() - tTentStatus > (telaAtual === 'painel' ? 55000 : 170000)) atualizarStatus(); }, 15000);
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
-  if (CH) { ouvir(); atualizarStatus(); }
+  if (CH) { ouvir(); if (Date.now() - tTentStatus > 30000) atualizarStatus(); }
   procurarAtualizacao(false);
 });
 setInterval(() => { if (!document.hidden) procurarAtualizacao(false); }, 10 * 60 * 1000);
