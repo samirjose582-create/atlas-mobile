@@ -146,6 +146,12 @@
   .sessao .linha-t.origem{color:var(--txt);-webkit-line-clamp:2}
   .sessao .linha-t em{font-style:normal;color:var(--txt);font-family:var(--c);letter-spacing:.08em}
   .sessao .pedido-atlas{margin-top:7px;font-size:13.5px;color:var(--amb)}
+  .sessao .pendencia{margin-top:9px;padding:9px 10px;border:1px solid var(--err,#ff4d6d);background:rgba(255,77,109,.07);font-size:14.5px}
+  .sessao .pendencia em{font-style:normal;font-family:var(--c);font-size:11px;letter-spacing:.1em;color:var(--err,#ff4d6d)}
+  .sessao .pendencia .det{margin-top:5px;font-size:12.5px;color:var(--apag);word-break:break-word}
+  .sessao .pendencia .acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  .sessao .pendencia .botao.ok{border-color:var(--ok,#3df5a7);color:var(--ok,#3df5a7)}
+  .sessao .pendencia .botao.nao{border-color:var(--err,#ff4d6d);color:var(--err,#ff4d6d)}
   .sessao .rodape{display:flex;align-items:center;justify-content:space-between;margin-top:9px;gap:10px}
   .sessao .rodape span{flex:1;min-width:0;font-family:var(--c);font-size:11px;letter-spacing:.1em;color:var(--apag)}
   .sessao .rodape .botao{white-space:nowrap;flex:none}
@@ -301,7 +307,7 @@
 
 <script>
 'use strict';
-const VERSAO = '2.0';
+const VERSAO = '2.1';
 const $ = s => document.querySelector(s);
 const guardar = (k, v) => { try { localStorage.setItem('atlas.' + k, JSON.stringify(v)); } catch (e) { } };
 const ler = (k, padrao) => { try { const v = localStorage.getItem('atlas.' + k); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; } };
@@ -502,6 +508,7 @@ async function perguntar(texto, extra = {}, para = null) {
   MSGS.push(resp); salvarMsgs(); desenharConversa(); compactar(); estadoOrbe('pensando');
   try {
     if (extra.texto === '__sessao__') await enviarAoAtlas(resp.id, '__sessao__', { sessao: extra.sessao, pedido: extra.pedido });
+    else if (extra.texto === '__sessao_resp__') await enviarAoAtlas(resp.id, '__sessao_resp__', { sessao: extra.sessao, tool_id: extra.tool_id, decisao: extra.decisao, opcao: extra.opcao || null });
     else await enviarAoAtlas(resp.id, texto);
     setTimeout(() => { if (resp.estado === 'enviando') { resp.estado = 'pendente'; resp.nota = 'O notebook ainda não respondeu. Ele está ligado, com o Atlas aberto?'; desenharConversa(); } }, 15000);
   } catch (e) {
@@ -690,8 +697,10 @@ function desenharSessoes() {
       ${s.ultimo_pedido ? `<div class="linha-t"><em>VOCÊ ›</em> ${escapar(s.ultimo_pedido)}</div>` : ''}
       ${s.ultima_resposta ? `<div class="linha-t"><em>CLAUDE ›</em> ${escapar(s.ultima_resposta)}</div>` : ''}
       ${s.pedido_atlas ? `<div class="pedido-atlas">${escapar(faseAtlas(s.pedido_atlas))}: ${escapar(s.pedido_atlas.pedido)}</div>` : ''}
+      ${s.pendencia ? blocoPendencia(s.pendencia) : ''}
       <div class="rodape"><span>${s.fonte === 'cowork' ? 'COWORK · ACOMPANHAMENTO' : escapar(ondeAberta(s))}${quando ? ' · ' + quando.toUpperCase() : ''}</span>${s.pode_pedir ? '<button class="botao leve">Mandar pedido</button>' : ''}</div>`;
     const b = d.querySelector('.botao.leve'); if (b) b.onclick = () => abrirSessao(s);
+    d.querySelectorAll('[data-resp]').forEach(x => x.onclick = () => responderSessao(s, x.dataset.resp, x.dataset.op));
     v.appendChild(d);
   }
 }
@@ -700,6 +709,22 @@ function ondeAberta(s) {
   const e = (s.aberta_em || '').toLowerCase(), onde = ONDE[e] || (e ? 'CLAUDE CODE (' + e.toUpperCase() + ')' : 'CLAUDE CODE');
   const desde = s.criada ? ' · ABERTA ' + new Date(s.criada * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
   return onde + desde;
+}
+// pedido de permissão / pergunta de uma sessão do Claude Desktop: o Atlas clica o botão lá, pelo nome
+function blocoPendencia(p) {
+  if (p.tipo === 'pergunta') return `<div class="pendencia"><div><em>PERGUNTA ›</em> ${escapar(p.falar || '')}</div>
+    ${(p.opcoes || []).length ? `<div class="det">Opções: ${escapar(p.opcoes.join(' · '))}</div>` : ''}<div class="det">Por enquanto, responda no notebook.</div></div>`;
+  return `<div class="pendencia"><div><em>QUER ›</em> ${escapar(p.falar || p.ferramenta || '')}</div>
+    ${p.detalhe ? `<div class="det">${escapar(p.detalhe)}</div>` : ''}
+    <div class="acoes"><button class="botao ok" data-resp="permitir">Permitir</button><button class="botao nao" data-resp="negar">Negar</button></div></div>`;
+}
+function responderSessao(s, decisao, opcao) {
+  const p = s.pendencia || {};
+  if (decisao === 'permitir' && !confirm('Permitir na sessão ' + (s.nome || '') + '?\n\n' + (p.falar || '') + (p.detalhe ? '\n' + p.detalhe : ''))) return;
+  const rot = decisao === 'permitir' ? 'Permitir' : decisao === 'negar' ? 'Negar' : opcao;
+  trocarTela('conversa');
+  perguntar(rot + ' · ' + (p.falar || p.ferramenta || ''), { texto: '__sessao_resp__', sessao: s.id, tool_id: p.id, decisao, opcao }, s.nome);
+  s.pendencia = null; setTimeout(() => atualizarSessoes(false), 5000);
 }
 function faseAtlas(p) {
   const d = p.desde_s || 0, h = Math.floor(d / 3600), m = Math.floor(d % 3600 / 60), t = h ? h + ' h ' + m + ' min' : m + ' min';

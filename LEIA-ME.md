@@ -32,6 +32,15 @@ Sem o Tailscale ligado, o app usa o ntfy como reserva, sozinho.
 2. No iPhone, abra o Atlas pelo ícone da Tela de Início → Ajustes → Notificações → Permitir.
 Avisa só com o app fechado: resposta que demorou, confirmação pedida, sessão do Claude que terminou ou pediu permissão.
 
+## Responder permissões das sessões do Claude Desktop
+Quando uma sessão pede permissão, a aba **Sessões** mostra o card em vermelho com **QUER ›** (o que ela quer fazer, lido do
+histórico da sessão) e os botões **Permitir / Negar**. Perguntas com opções aparecem só para leitura (responda no notebook).
+O Atlas aciona o botão no Claude Desktop pelo NOME do botão (acessibilidade do Windows, sem mouse). Antes, abre a sessão pela
+barra lateral e confere o cabeçalho. Por voz/texto: "aprova a sessão SG-Tools", "nega o pedido no Claude".
+Segurança: só clica se a sessão ainda pede exatamente aquilo e se houver um único botão correspondente. Nunca clica em
+"sempre" ou "nesta sessão". Registro: `logs/claude_botoes.log`, que também anota os nomes dos botões a cada pedido novo
+(para ajustar `claude_botoes_permitir` / `claude_botoes_negar` no `config.json`, se o app usar outros nomes).
+
 ## Atualizar (quando você editar algo)
 1. No GitHub: Add file → Upload files → arraste os arquivos alterados (normalmente só `index.html`, às vezes `sw.js`) → Commit.
 2. Em 1–2 minutos o app percebe sozinho: ao abrir, ao voltar para ele e a cada 10 min.
