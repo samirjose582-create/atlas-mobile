@@ -341,7 +341,7 @@
 
 <script>
 'use strict';
-const VERSAO = '2.2';
+const VERSAO = '2.3';
 const $ = s => document.querySelector(s);
 const guardar = (k, v) => { try { localStorage.setItem('atlas.' + k, JSON.stringify(v)); } catch (e) { } };
 const ler = (k, padrao) => { try { const v = localStorage.getItem('atlas.' + k); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; } };
@@ -610,6 +610,7 @@ async function atualizarStatus() {
   try {
     const m = await pedirInterno('__status__', null, 9000);
     STATUS = m.status; tStatus = Date.now(); guardar('status', STATUS); marcarOnline(true);
+    if (STATUS && 'modo_longe' in STATUS && !!STATUS.modo_longe !== MODO_LONGE) { MODO_LONGE = !!STATUS.modo_longe; if (telaAtual === 'sessoes') desenharSessoes(); }
     if (STATUS && STATUS.direto && STATUS.direto !== PAR.d) { PAR.d = STATUS.direto; guardar('par', PAR); escolherCanal(); }
   } catch (e) { marcarOnline(false); }
   statusEmCurso = false;
@@ -713,8 +714,10 @@ function desenharSessoes() {
   const cont = {}; for (const s of lista) cont[s.estado] = (cont[s.estado] || 0) + 1;
   const resumo = ['trabalhando', 'aprovacao', 'aguardando'].filter(k => cont[k]).map(k => `<span class="tag" style="color:${COR_SES[k]}">${cont[k]} ${ROT_SES[k]}</span>`).join(' ');
   v.innerHTML = `<div class="cabeca"><span class="rot">Sessões do Claude</span><button class="botao" id="btAtualSes" ${sesFase === 'carregando' ? 'disabled' : ''}>${sesFase === 'carregando' ? 'Lendo…' : 'Atualizar'}</button></div>
+    <div class="opcao hud longe" id="linhaLonge" style="padding:10px 12px;margin:0 0 10px"><div>Modo longe<small>${MODO_LONGE ? 'Os pedidos de permissão das sessões vêm para o celular (o notebook fica intocado).' : 'Desligado: os pedidos de permissão aparecem só na tela do notebook.'}</small></div><button class="chave" role="switch" id="optLonge" aria-checked="${MODO_LONGE ? 'true' : 'false'}" aria-label="Modo longe"></button></div>
     ${resumo ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:-2px 0 10px">${resumo}</div>` : ''}`;
   $('#btAtualSes').onclick = () => atualizarSessoes(true);
+  $('#optLonge').onclick = () => alternarLonge();
   if (sesFase === 'erro') v.insertAdjacentHTML('beforeend', `<div class="info erro" style="padding:4px 2px 12px">${escapar(sesErro)}</div>`);
   if (!lista.length) {
     const txt = sesFase === 'carregando' || sesFase === 'nunca' ? '<span class="trab" style="display:inline-flex;gap:9px;align-items:center;color:var(--amb)"><i style="width:13px;height:13px;border:2px solid var(--amb);border-right-color:transparent;border-radius:50%;animation:gira 1s linear infinite"></i>Lendo as sessões no notebook…</span>'
@@ -747,10 +750,13 @@ function ondeAberta(s) {
 }
 // pedido de permissão / pergunta de uma sessão do Claude Desktop: o Atlas clica o botão lá, pelo nome
 function blocoPendencia(p) {
+  if (p.tipo !== 'pergunta' && p.via === 'tela' && !p.responder) return `<div class="pendencia"><div><em>QUER ›</em> ${escapar(p.falar || p.ferramenta || '')}</div>
+    ${p.detalhe ? `<div class="det">${escapar(p.detalhe)}</div>` : ''}<div class="det">Esperando na tela do notebook. Ligue o <b>modo longe</b> para os próximos pedidos virem para cá.</div></div>`;
   if (p.tipo === 'pergunta') return `<div class="pendencia"><div><em>PERGUNTA ›</em> ${escapar(p.falar || '')}</div>
     ${(p.opcoes || []).length ? `<div class="det">Opções: ${escapar(p.opcoes.join(' · '))}</div>` : ''}<div class="det">Por enquanto, responda no notebook.</div></div>`;
   return `<div class="pendencia"><div><em>QUER ›</em> ${escapar(p.falar || p.ferramenta || '')}</div>
     ${p.detalhe ? `<div class="det">${escapar(p.detalhe)}</div>` : ''}
+    ${p.via === 'longe' ? `<div class="det">Sem resposta em ${Math.max(1, Math.round((p.espera_s || 300) / 60))} min, o pedido vai para a tela do notebook.</div>` : ''}
     <div class="acoes"><button class="botao ok" data-resp="permitir">Permitir</button><button class="botao nao" data-resp="negar">Negar</button></div></div>`;
 }
 function responderSessao(s, decisao, opcao) {
@@ -768,6 +774,16 @@ function responderSessao(s, decisao, opcao) {
 // ═════════════ chat de UMA sessão (como no Claude Desktop) ═════════════
 // Cada sessão tem a própria conversa: o histórico vem do notebook (o .jsonl dela) e os pedidos vão direto para a caixa
 // de mensagem dela no Claude Desktop. Os avisos do Atlas sobre a sessão ficam aqui, não na conversa geral.
+var MODO_LONGE = !!(ler('status', {}) || {}).modo_longe;    // var: a lista de sessões pode desenhar antes desta linha
+async function alternarLonge() {                             // modo longe: permissões das sessões vêm para o celular (hook)
+  const quer = !MODO_LONGE, bt = $('#optLonge'); if (bt) bt.disabled = true;
+  try {
+    const m = await pedirInterno('__modo_longe__', { ligar: quer }, 20000);
+    MODO_LONGE = !!m.modo_longe; vibrar(30);
+    aviso(MODO_LONGE ? 'Modo longe ligado: as permissões vêm para cá.' : 'Modo longe desligado: as permissões ficam no notebook.', 3500);
+  } catch (e) { aviso('O notebook não respondeu. Tente de novo.'); }
+  if (telaAtual === 'sessoes') desenharSessoes();
+}
 let CHAT = null, chatTm = null, chatCarregando = false;
 const NOTAS = {};                                            // sessão → avisos do Atlas (entregue, terminou, permissão…)
 function abrirChat(s) {
@@ -820,7 +836,7 @@ function desenharChat(rolar) {
   for (const m of msgs) {
     if (m.de === 'acao') { h += `<div class="acao-n">◦ usou ${m.n} ferramenta${m.n > 1 ? 's' : ''}</div>`; continue; }
     const eu = m.de === 'eu';
-    h += `<div class="msg hud ${eu ? 'eu' : 'claude'}"><div class="quem"><span>${eu ? '▸ Senhor' : '◂ Claude'}</span><time>${m.t ? hora(m.t) : ''}</time></div>${eu ? escapar(m.texto) : md(m.texto)}</div>`;
+    h += `<div class="msg hud ${eu ? 'eu' : 'claude'}"><div class="quem"><span>${eu ? '▸ Senhor' + (m.via === 'atlas' ? ' · pelo app' : '') : '◂ Claude'}</span><time>${m.t ? hora(m.t) : ''}</time></div>${eu ? escapar(m.texto) : md(m.texto)}</div>`;
   }
   if (d.pendencia) h += `<div class="sessao sessao-pend hud" style="--cor:var(--err)">${blocoPendencia(d.pendencia)}</div>`;
   for (const n of (NOTAS[CHAT.id] || []).slice(-3)) h += `<div class="nota ${n.estado || ''}">${n.estado === 'pendente' ? '◌ ' : ''}${escapar(n.texto)}</div>`;
@@ -838,6 +854,15 @@ function notaSessao(m) {                                     // aviso do Atlas s
     const est = m.pendente ? 'pendente' : m.ok === false ? 'erro' : 'ok';
     if (n) Object.assign(n, { id: m.id, texto: m.fala, estado: est }); else lista.push({ id: m.id, texto: m.fala, estado: est, t: Date.now() / 1000 });
     if (lista.length > 8) lista.splice(0, lista.length - 8);
+  }
+  if (m.permissao) {                                         // modo longe: pedido de permissão chegou agora
+    vibrar([80, 60, 80, 60, 80]);
+    const s = (SESSOES || []).find(x => x.id === sid); if (s) { s.pendencia = m.permissao; s.estado = 'aprovacao'; }
+    if (CHAT && CHAT.id === sid) { CHAT.dados = CHAT.dados || { msgs: [] }; CHAT.dados.pendencia = m.permissao; CHAT.estado = 'aprovacao'; marcarEstadoChat('aprovacao'); desenharChat(true); return; }
+    aviso('Permissão pedida: ' + (m.permissao.falar || '') + ' — abra a sessão para responder.', 6000);
+    const bo = $('#bolhaSessoes'); bo.textContent = (+bo.textContent || 0) + 1; bo.classList.remove('oculto');
+    if (telaAtual === 'sessoes') desenharSessoes(); else atualizarSessoes(false);
+    return;
   }
   if (CHAT && CHAT.id === sid) { desenharChat(false); if (m.fala && !m.pendente) setTimeout(() => carregarChat(false), 1500); }
   else if (m.fala && !m.pendente) { aviso(m.fala.slice(0, 160), 5000); vibrar([40, 60, 40]); if (telaAtual === 'sessoes') atualizarSessoes(false); }

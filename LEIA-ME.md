@@ -39,7 +39,17 @@ do notebook) e uma caixa para escrever. O que você manda vai direto para a caix
 Os avisos do Atlas sobre a sessão (entregue, terminou, pediu permissão) ficam dentro desse chat, não na conversa geral.
 Com o canal direto (Tailscale) a conversa se atualiza sozinha; pelo ntfy, toque em ⟳ (para não gastar a cota).
 
-## Responder permissões das sessões do Claude Desktop
+## Modo longe: Permitir / Negar pelo celular sem tocar no notebook
+Na aba **Sessões**, ligue **Modo longe** (ou diga "liga o modo longe"). A partir daí, quando uma sessão do Claude Code /
+Claude Desktop for pedir permissão, o próprio Claude Code chama o Atlas (hook `PermissionRequest`, instalado pelo
+`Configurar_Avisos.bat`): o pedido aparece no chat da sessão no app, com **Permitir / Negar**, e a resposta volta direto
+para o Claude Code — nenhum clique, mouse ou teclado no notebook. Sem resposta em 5 min (`longe_espera_s`), o pedido cai na
+tela do notebook (nada é aprovado sozinho). Desligado (padrão), os pedidos aparecem normalmente no notebook.
+Por voz: "aprova a sessão SG-Tools", "nega o pedido no Claude". Registro: `logs/permissoes.log`.
+As mensagens do chat vão por mensagem entre sessões para o título EXATO da sessão (sem mouse). Se a sessão não aparecer
+para o Atlas, ele avisa e não envia; com `"entrega_reserva_caixa": true` no `config.json`, digita na caixa dela (mouse).
+
+## Responder permissões das sessões do Claude Desktop (pela tela — reserva, desligada)
 Quando uma sessão pede permissão, a aba **Sessões** mostra o card em vermelho com **QUER ›** (o que ela quer fazer, lido do
 histórico da sessão) e os botões **Permitir / Negar**. Perguntas com opções aparecem só para leitura (responda no notebook).
 O Atlas aciona o botão no Claude Desktop pelo NOME do botão (acessibilidade do Windows, sem mouse). Antes, abre a sessão pela
