@@ -334,7 +334,7 @@
 
 <section class="folha hud" id="folhaConfig" aria-labelledby="tConfig" role="dialog">
   <h3 id="tConfig">Ajustes</h3>
-  <div class="opcao"><div>Falar as respostas<small>O celular lê em voz alta o que o Atlas responder</small></div><button class="chave" role="switch" id="optVoz" aria-checked="true" aria-label="Falar as respostas"></button></div>
+  <div class="opcao"><div>Falar as respostas<small>Na voz do Atlas (Daniel, ElevenLabs), quando o canal direto com o notebook estiver ativo</small></div><button class="chave" role="switch" id="optVoz" aria-checked="true" aria-label="Falar as respostas"></button></div>
   <div class="opcao"><div>Notificações<small id="pushEstado">Avisa na tela de bloqueio quando algo ficar pronto, mesmo com o app fechado</small></div><button class="chave" role="switch" id="optPush" aria-checked="false" aria-label="Notificações"></button></div>
   <div class="opcao"><div>Vibrar<small>Ao receber respostas e pedidos de confirmação</small></div><button class="chave" role="switch" id="optVibrar" aria-checked="true" aria-label="Vibrar"></button></div>
   <div class="opcao"><div>Animação leve<small>Menos partículas, para poupar bateria</small></div><button class="chave" role="switch" id="optLeve" aria-checked="false" aria-label="Animação leve"></button></div>
@@ -355,7 +355,7 @@
 
 <script>
 'use strict';
-const VERSAO = '2.5';
+const VERSAO = '2.6';
 const $ = s => document.querySelector(s);
 const guardar = (k, v) => { try { localStorage.setItem('atlas.' + k, JSON.stringify(v)); } catch (e) { } };
 const ler = (k, padrao) => { try { const v = localStorage.getItem('atlas.' + k); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; } };
@@ -1027,7 +1027,7 @@ $('#btConfig').onclick = () => {
   $('#versao').textContent = 'Atlas Mobile ' + VERSAO + (VERSAO_PUB ? ' · publicação ' + VERSAO_PUB : '') + (PAR ? ' · canal ' + PAR.t.slice(0, 10) + '…' : '');
   abrirFolha('#folhaConfig'); mostrarDireto();
 };
-$('#optVoz').onclick = () => { OPC.voz = !OPC.voz; marcar($('#optVoz'), OPC.voz); guardar('opc', OPC); if (!OPC.voz) speechSynthesis.cancel(); };
+$('#optVoz').onclick = () => { OPC.voz = !OPC.voz; marcar($('#optVoz'), OPC.voz); guardar('opc', OPC); if (!OPC.voz) calarVoz(); };
 $('#optVibrar').onclick = () => { OPC.vibrar = !OPC.vibrar; marcar($('#optVibrar'), OPC.vibrar); guardar('opc', OPC); };
 $('#optLeve').onclick = () => { OPC.leve = !OPC.leve; marcar($('#optLeve'), OPC.leve); guardar('opc', OPC); U3.leve(OPC.leve); };
 function normalizarDireto(t) {
@@ -1175,7 +1175,7 @@ let rec = null;
 function escutar(campo, aoTerminar) {
   if (!SR) { aviso('Este navegador não reconhece fala. Use o microfone do teclado.', 3600); campo && campo.focus(); return; }
   if (rec) { pararEscuta(); return; }
-  speechSynthesis.cancel();
+  calarVoz();
   rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = false;
   let final = '';
   rec.onresult = e => {
@@ -1194,16 +1194,33 @@ function marcarOuvindo(v) {
   else { $('#legenda').classList.remove('viva'); if (estadoAtual === 'ouvindo') estadoOrbe('ocioso'); legendaPadrao(); }
 }
 function legendaPadrao() { if (estadoAtual === 'ocioso' || estadoAtual === 'offline') $('#legenda').textContent = online === false ? 'O notebook não responde agora' : 'Toque no núcleo para falar'; }
-let vozPt = null;
-function escolherVoz() { const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)BR/i.test(v.lang)); vozPt = vs.find(v => /natural|online|google|luciana/i.test(v.name)) || vs[0] || null; }
-if ('speechSynthesis' in window) { escolherVoz(); speechSynthesis.onvoiceschanged = escolherVoz; }
-function falar(t) {
-  if (!OPC.voz || !('speechSynthesis' in window) || document.hidden || !t) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(t.replace(/[*#_`>|~]/g, '')); u.lang = 'pt-BR'; if (vozPt) u.voice = vozPt; u.rate = 1.04;
-  u.onstart = () => estadoOrbe('falando'); u.onboundary = () => { nivelVoz = 1; };
-  u.onend = u.onerror = () => { if (estadoAtual === 'falando') estadoOrbe(MSGS.some(m => m.estado === 'pendente' || m.estado === 'enviando') ? 'pensando' : 'ocioso'); };
-  speechSynthesis.speak(u);
+// voz: a MESMA do Atlas no notebook (ElevenLabs, voz Daniel) — o app pede o MP3 pelo canal direto cifrado e toca.
+// Sem canal direto (ou se a voz falhar), a resposta fica só escrita: não há outra voz.
+const AUD = new Audio(); AUD.preload = 'auto';
+let vozSeq = 0, vozPulso = 0, audLiberado = false;
+function wavSilencio() {                                        // 0,05 s de silêncio: libera o áudio no 1º toque (celular)
+  const n = 1200, b = new DataView(new ArrayBuffer(44 + n * 2)), s = (o, t) => { for (let i = 0; i < t.length; i++) b.setUint8(o + i, t.charCodeAt(i)); };
+  s(0, 'RIFF'); b.setUint32(4, 36 + n * 2, true); s(8, 'WAVEfmt '); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+  b.setUint32(24, 24000, true); b.setUint32(28, 48000, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); s(36, 'data'); b.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([b.buffer], { type: 'audio/wav' }));
+}
+document.addEventListener('pointerdown', () => { if (audLiberado) return; audLiberado = true; AUD.src = wavSilencio(); AUD.play().catch(() => { }); }, { capture: true });
+function fimVoz() { clearInterval(vozPulso); if (estadoAtual === 'falando') estadoOrbe(MSGS.some(m => m.estado === 'pendente' || m.estado === 'enviando') ? 'pensando' : 'ocioso'); }
+AUD.onended = fimVoz; AUD.onerror = fimVoz;
+function calarVoz() { vozSeq++; try { AUD.pause(); } catch (e) { } fimVoz(); }
+async function falar(t) {
+  if (!OPC.voz || document.hidden || !t) return;
+  const meu = ++vozSeq; try { AUD.pause(); } catch (e) { }
+  try {
+    if (!(await canalDiretoPronto())) return;
+    const r = await postDireto('/voz', { id: novoId(), t: Date.now() / 1000, texto: t.replace(/[*#_`>|~]/g, '') }, 45000);
+    if (meu !== vozSeq || !r.ok || !r.b64 || document.hidden) return;
+    const bin = atob(r.b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    if (AUD.src.startsWith('blob:')) URL.revokeObjectURL(AUD.src);
+    AUD.src = URL.createObjectURL(new Blob([u8], { type: r.tipo || 'audio/mpeg' }));
+    await AUD.play(); estadoOrbe('falando');
+    clearInterval(vozPulso); vozPulso = setInterval(() => { nivelVoz = 1; }, 180);
+  } catch (e) { fimVoz(); }
 }
 function falarPedido() { escutar(null, t => { if (t) perguntar(t); else legendaPadrao(); }); }
 $('#falar').onclick = () => escutar($('#texto'), t => { if (t) { $('#texto').value = ''; atualizarEnviar(); perguntar(t); } });
